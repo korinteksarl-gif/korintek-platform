@@ -13,12 +13,16 @@ async function main() {
   const prenom = process.env.SEED_ADMIN_PRENOM || 'Korintek';
 
   const existing = await prisma.user.findUnique({ where: { email } });
+  const passwordHash = await bcrypt.hash(password, 10);
+
   if (existing) {
-    console.log(`Le compte ${email} existe déjà. Aucune action.`);
+    await prisma.user.update({
+      where: { email },
+      data: { passwordHash, role: 'SUPER_ADMIN', active: true },
+    });
+    console.log(`Le compte ${email} existait déjà — mot de passe mis à jour avec la valeur actuelle de SEED_ADMIN_PASSWORD.`);
     return;
   }
-
-  const passwordHash = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
     data: { email, passwordHash, nom, prenom, role: 'SUPER_ADMIN', active: true },
