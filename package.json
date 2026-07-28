@@ -1,0 +1,10 @@
+{
+  "name": "korintek-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KORINTEK BUSINESS PORTAL — monorepo (module actif : Queue Manager)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
