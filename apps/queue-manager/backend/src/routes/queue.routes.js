@@ -5,6 +5,7 @@ const {
   admissionList,
   publicStats,
   callNext,
+  replayCall,
   complete,
   markAbsent,
 } = require('../controllers/queue.controller');
@@ -20,6 +21,7 @@ router.get('/public-stats', publicStats);
 router.use(authenticate);
 router.get('/admission-list', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), admissionList);
 router.post('/next', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), callNext);
+router.post('/:id/replay-call', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), replayCall);
 router.post('/:id/complete', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), complete);
 router.post('/:id/absent', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), markAbsent);
 
