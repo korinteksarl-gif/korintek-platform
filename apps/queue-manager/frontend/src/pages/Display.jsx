@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import apiClient from '../api/client';
 
 // Écran public de salle d'attente — aucune authentification requise (lecture seule).
-// Annonce sonore : carillon (Web Audio API) + voix française (Web Speech API).
-// Panneau publicitaire configurable (gauche/droite) : ajouter ?ads=left à l'URL pour
-// inverser le côté. Par défaut : publicités à droite.
+// Deux types d'annonces sonores distincts :
+//   1. Appel en salle d'examen — carillon 2 notes + voix "présentez-vous à l'accueil"
+//   2. Formalités d'admission (T-15min) — carillon 3 notes montantes + voix "montez
+//      avec vos effets personnels" + bandeau visuel temporaire en haut de l'écran.
+// Panneau publicitaire configurable (gauche/droite) : ajouter ?ads=left à l'URL.
 
 function playChime(audioCtx) {
   const notes = [
@@ -21,6 +23,30 @@ function playChime(audioCtx) {
     const t0 = audioCtx.currentTime + start;
     gain.gain.setValueAtTime(0, t0);
     gain.gain.linearRampToValueAtTime(0.35, t0 + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.05);
+  });
+}
+
+// Carillon distinct pour les formalités d'admission — 3 notes montantes (sol-do-mi),
+// pour que le personnel et les candidats fassent bien la différence avec l'appel.
+function playAdmissionChime(audioCtx) {
+  const notes = [
+    { freq: 392.0, start: 0, duration: 0.22 },
+    { freq: 523.25, start: 0.2, duration: 0.22 },
+    { freq: 659.25, start: 0.4, duration: 0.4 },
+  ];
+  notes.forEach(({ freq, start, duration }) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + start;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.3, t0 + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     osc.start(t0);
     osc.stop(t0 + duration + 0.05);
@@ -49,7 +75,6 @@ function AdPanel({ ads }) {
   }, [ads.length]);
 
   if (!ads.length) {
-    // Aucune publicité configurée : le panneau affiche simplement l'identité de marque.
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 bg-[#062028] border-l border-white/5">
         <svg width="56" height="56" viewBox="0 0 40 40" aria-hidden="true">
@@ -88,9 +113,11 @@ function AdPanel({ ads }) {
 export default function Display() {
   const [current, setCurrent] = useState(null);
   const [pulse, setPulse] = useState(false);
+  const [admissionNotice, setAdmissionNotice] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [ads, setAds] = useState([]);
   const lastId = useRef(null);
+  const lastAdmissionId = useRef(null);
   const audioCtxRef = useRef(null);
 
   const params = new URLSearchParams(window.location.search);
@@ -114,10 +141,11 @@ export default function Display() {
       }
     }
     loadAds();
-    const adsInterval = setInterval(loadAds, 5 * 60 * 1000); // rafraîchi toutes les 5 min
+    const adsInterval = setInterval(loadAds, 5 * 60 * 1000);
     return () => clearInterval(adsInterval);
   }, []);
 
+  // Poll de l'appel en salle d'examen (inchangé)
   useEffect(() => {
     async function poll() {
       try {
@@ -146,6 +174,36 @@ export default function Display() {
     return () => clearInterval(interval);
   }, [soundEnabled]);
 
+  // Poll des formalités d'admission (T-15min) — annonce distincte
+  useEffect(() => {
+    async function pollAdmission() {
+      try {
+        const { data } = await apiClient.get('/queue/admission-current');
+        if (data.candidate && data.candidate.id !== lastAdmissionId.current) {
+          lastAdmissionId.current = data.candidate.id;
+          setAdmissionNotice(data.candidate);
+
+          if (soundEnabled && audioCtxRef.current) {
+            playAdmissionChime(audioCtxRef.current);
+            setTimeout(() => {
+              speakAnnouncement(
+                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Merci de vous présenter à l'accueil pour les formalités d'admission. Munissez-vous de tous vos effets personnels.`
+              );
+            }, 900);
+          }
+
+          // Le bandeau visuel reste affiché 12 secondes puis disparaît de lui-même.
+          setTimeout(() => setAdmissionNotice((n) => (n?.id === data.candidate.id ? null : n)), 12000);
+        }
+      } catch {
+        // silencieux
+      }
+    }
+    pollAdmission();
+    const interval = setInterval(pollAdmission, 5000);
+    return () => clearInterval(interval);
+  }, [soundEnabled]);
+
   const mainContent = (
     <div className="flex-1 min-w-0 bg-[#04141A] text-white flex flex-col items-center justify-center px-8 relative">
       {!soundEnabled && (
@@ -158,6 +216,13 @@ export default function Display() {
       )}
       {soundEnabled && (
         <span className="absolute top-6 right-6 text-white/30 text-xs uppercase tracking-widest">🔊 Son activé</span>
+      )}
+
+      {/* Bandeau "Formalités d'admission" — distinct de l'appel principal, disparaît après 12s */}
+      {admissionNotice && (
+        <div className="absolute top-0 left-0 right-0 bg-amber-500 text-[#04141A] px-6 py-3 text-center font-semibold shadow-lg animate-pulse">
+          ⏰ {admissionNotice.numero} — {admissionNotice.prenom} {admissionNotice.nom} : merci de monter à l'accueil avec vos effets personnels
+        </div>
       )}
 
       <div className="flex items-center gap-2 mb-6">
