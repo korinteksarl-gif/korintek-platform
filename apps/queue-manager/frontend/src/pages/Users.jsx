@@ -47,6 +47,19 @@ export default function Users() {
     }
   }
 
+  async function removeUser(id, email) {
+    if (!window.confirm(`Supprimer définitivement le compte ${email} ?`)) return;
+    setSaving(id);
+    try {
+      await apiClient.delete(`/users/${id}`);
+      await load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erreur lors de la suppression.');
+    } finally {
+      setSaving(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
@@ -77,6 +90,7 @@ export default function Users() {
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Rôle</th>
                 <th className="px-4 py-2">Statut</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -107,10 +121,19 @@ export default function Users() {
                       {u.active ? 'Actif' : 'Désactivé'}
                     </button>
                   </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => removeUser(u.id, u.email)}
+                      disabled={saving === u.id || u.id === currentUser?.id}
+                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-30"
+                    >
+                      Supprimer
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!users.length && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">Aucun utilisateur.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">Aucun utilisateur.</td></tr>
               )}
             </tbody>
           </table>
