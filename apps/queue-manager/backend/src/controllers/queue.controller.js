@@ -128,4 +128,28 @@ async function markAbsent(req, res, next) {
   }
 }
 
-module.exports = { current, admissionCurrent, admissionList, callNext, complete, markAbsent };
+// GET /api/v1/queue/public-stats
+// PUBLIC — statistiques agrégées du jour, sans aucune donnée personnelle, destinées
+// au bandeau d'information de l'écran salle d'attente.
+async function publicStats(req, res, next) {
+  try {
+    await promoteDueForAdmission(todayStr());
+    const { start, end } = todayRange();
+    const candidates = await prisma.candidate.findMany({
+      where: { datePassage: { gte: start, lt: end } },
+      select: { statut: true },
+    });
+    const counts = { total: candidates.length, waiting: 0, admission: 0, called: 0, completed: 0 };
+    candidates.forEach((c) => {
+      if (c.statut === 'WAITING') counts.waiting++;
+      if (c.statut === 'ADMISSION') counts.admission++;
+      if (c.statut === 'CALLED' || c.statut === 'IN_PROGRESS') counts.called++;
+      if (c.statut === 'COMPLETED') counts.completed++;
+    });
+    res.json(counts);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { current, admissionCurrent, admissionList, publicStats, callNext, complete, markAbsent };
