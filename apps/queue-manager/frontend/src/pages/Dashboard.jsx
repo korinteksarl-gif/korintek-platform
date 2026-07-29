@@ -6,10 +6,19 @@ import Logo from '../components/Logo.jsx';
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const STATUT_LABELS = {
   WAITING: 'En attente',
+  ADMISSION: 'Formalités',
   CALLED: 'Appelés',
   IN_PROGRESS: 'En examen',
   COMPLETED: 'Terminés',
   ABSENT: 'Absents',
+};
+const STATUT_BADGE = {
+  WAITING: 'bg-slate-100 text-slate-600',
+  ADMISSION: 'bg-amber-100 text-amber-700',
+  CALLED: 'bg-sky-100 text-sky-700',
+  IN_PROGRESS: 'bg-indigo-100 text-indigo-700',
+  COMPLETED: 'bg-emerald-100 text-emerald-700',
+  ABSENT: 'bg-red-100 text-red-700',
 };
 
 export default function Dashboard() {
@@ -20,7 +29,10 @@ export default function Dashboard() {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState('');
-  const [form, setForm] = useState({ nom: '', prenom: '', email: '', telephone: '', examen: '', heureConvocation: '' });
+  const [form, setForm] = useState({
+    nom: '', prenom: '', email: '', telephone: '', examen: '',
+    heureConvocation: '', poste: '', dureeMinutes: '120',
+  });
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('korintek_user') || 'null');
 
@@ -33,7 +45,13 @@ export default function Dashboard() {
     setCandidates(listRes.data.candidates);
   }
 
-  useEffect(() => { loadData(); }, [date]);
+  useEffect(() => {
+    loadData();
+    // Rafraîchissement périodique : nécessaire pour voir apparaître les passages
+    // automatiques en statut "Formalités" (T-15min) sans recharger la page.
+    const interval = setInterval(loadData, 20000);
+    return () => clearInterval(interval);
+  }, [date]);
 
   function logout() {
     localStorage.removeItem('korintek_token');
@@ -44,7 +62,7 @@ export default function Dashboard() {
   async function handleAddCandidate(e) {
     e.preventDefault();
     await apiClient.post('/candidates', { ...form, datePassage: date });
-    setForm({ nom: '', prenom: '', email: '', telephone: '', examen: '', heureConvocation: '' });
+    setForm({ nom: '', prenom: '', email: '', telephone: '', examen: '', heureConvocation: '', poste: '', dureeMinutes: '120' });
     setShowForm(false);
     loadData();
   }
@@ -72,9 +90,9 @@ export default function Dashboard() {
 
   const cards = [
     { key: 'total', label: 'Total', color: 'bg-slate-100 text-slate-700' },
-    { key: 'WAITING', label: 'En attente', color: 'bg-amber-50 text-amber-700' },
+    { key: 'WAITING', label: 'En attente', color: 'bg-slate-100 text-slate-600' },
+    { key: 'ADMISSION', label: 'Formalités', color: 'bg-amber-50 text-amber-700' },
     { key: 'CALLED', label: 'Appelés', color: 'bg-sky-50 text-sky-700' },
-    { key: 'IN_PROGRESS', label: 'En examen', color: 'bg-indigo-50 text-indigo-700' },
     { key: 'COMPLETED', label: 'Terminés', color: 'bg-emerald-50 text-emerald-700' },
     { key: 'ABSENT', label: 'Absents', color: 'bg-red-50 text-red-700' },
   ];
@@ -150,7 +168,7 @@ export default function Dashboard() {
         {importMsg && <p className="text-sm text-slate-600">{importMsg}</p>}
 
         {showForm && (
-          <form onSubmit={handleAddCandidate} className="bg-white border border-slate-200 rounded-xl p-5 grid md:grid-cols-3 gap-3">
+          <form onSubmit={handleAddCandidate} className="bg-white border border-slate-200 rounded-xl p-5 grid md:grid-cols-4 gap-3">
             {['nom', 'prenom', 'email', 'telephone', 'examen'].map((field) => (
               <input
                 key={field}
@@ -162,13 +180,35 @@ export default function Dashboard() {
               />
             ))}
             <input
-              type="time"
-              required
-              value={form.heureConvocation}
-              onChange={(e) => setForm({ ...form, heureConvocation: e.target.value })}
+              type="text"
+              placeholder="Poste (ex: Poste 1)"
+              value={form.poste}
+              onChange={(e) => setForm({ ...form, poste: e.target.value })}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
-            <button type="submit" className="md:col-span-3 bg-korintek-teal text-white rounded-lg py-2 font-medium text-sm">
+            <div className="flex gap-2 items-center">
+              <input
+                type="time"
+                required
+                value={form.heureConvocation}
+                onChange={(e) => setForm({ ...form, heureConvocation: e.target.value })}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm flex-1"
+              />
+              <span className="text-xs text-slate-400 whitespace-nowrap">début examen</span>
+            </div>
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                min="15"
+                step="5"
+                placeholder="120"
+                value={form.dureeMinutes}
+                onChange={(e) => setForm({ ...form, dureeMinutes: e.target.value })}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm w-20"
+              />
+              <span className="text-xs text-slate-400 whitespace-nowrap">min. durée</span>
+            </div>
+            <button type="submit" className="md:col-span-4 bg-korintek-teal text-white rounded-lg py-2 font-medium text-sm">
               Enregistrer le candidat
             </button>
           </form>
@@ -181,8 +221,10 @@ export default function Dashboard() {
                 <th className="px-4 py-2">N°</th>
                 <th className="px-4 py-2">Candidat</th>
                 <th className="px-4 py-2">Examen</th>
+                <th className="px-4 py-2">Poste</th>
                 <th className="px-4 py-2">Heure</th>
                 <th className="px-4 py-2">Statut</th>
+                <th className="px-4 py-2">Retard</th>
               </tr>
             </thead>
             <tbody>
@@ -191,12 +233,26 @@ export default function Dashboard() {
                   <td className="px-4 py-2 font-mono font-medium">{c.numero}</td>
                   <td className="px-4 py-2">{c.prenom} {c.nom}</td>
                   <td className="px-4 py-2">{c.examen}</td>
+                  <td className="px-4 py-2 text-slate-500">{c.poste || '—'}</td>
                   <td className="px-4 py-2">{c.heureConvocation}</td>
-                  <td className="px-4 py-2">{STATUT_LABELS[c.statut]}</td>
+                  <td className="px-4 py-2">
+                    <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${STATUT_BADGE[c.statut]}`}>
+                      {STATUT_LABELS[c.statut]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {c.retardMinutes > 0 ? (
+                      <span className={`text-xs font-semibold ${c.retardMinutes > 15 ? 'text-red-600' : 'text-amber-600'}`}>
+                        +{c.retardMinutes} min
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-300">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!candidates.length && (
-                <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">Aucun candidat pour cette date.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">Aucun candidat pour cette date.</td></tr>
               )}
             </tbody>
           </table>
