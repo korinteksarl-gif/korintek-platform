@@ -2,6 +2,9 @@
 function errorHandler(err, req, res, next) {
   console.error(err);
 
+  if (err.name === 'MulterError' || err.message?.includes('image ou vidéo')) {
+    return res.status(400).json({ error: err.message.includes('File too large') ? 'Fichier trop volumineux (15 Mo maximum).' : err.message });
+  }
   if (err.code === 'P2002') {
     return res.status(409).json({ error: 'Une ressource unique existe déjà (doublon).' });
   }
