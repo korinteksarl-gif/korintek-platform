@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
+const { promoteDueForAdmission } = require('../utils/timing');
 
 function todayRange() {
   const start = new Date();
@@ -9,10 +10,17 @@ function todayRange() {
   return { start, end };
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 // GET /api/v1/queue/current
-// Renvoie le dernier candidat appelé (affiché sur l'écran salle d'attente et la tablette agent)
+// Renvoie le dernier candidat appelé en salle d'examen (affiché sur l'écran
+// salle d'attente et la tablette agent). Déclenche aussi le passage en
+// ADMISSION des candidats arrivant à J-15min (pas de cron nécessaire).
 async function current(req, res, next) {
   try {
+    await promoteDueForAdmission(todayStr());
     const { start, end } = todayRange();
     const candidate = await prisma.candidate.findFirst({
       where: {
@@ -27,15 +35,50 @@ async function current(req, res, next) {
   }
 }
 
+// GET /api/v1/queue/admission-current
+// PUBLIC — renvoie le dernier candidat passé en statut ADMISSION (rappel T-15min),
+// consommé par l'écran salle d'attente pour l'annonce "montez pour les formalités".
+async function admissionCurrent(req, res, next) {
+  try {
+    await promoteDueForAdmission(todayStr());
+    const { start, end } = todayRange();
+    const candidate = await prisma.candidate.findFirst({
+      where: { datePassage: { gte: start, lt: end }, statut: 'ADMISSION' },
+      orderBy: { admissionNotifiedAt: 'desc' },
+    });
+    res.json({ candidate: candidate || null });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/v1/queue/admission-list
+// Réservé staff — liste complète des candidats actuellement en formalités
+// d'admission, pour le panneau "À préparer maintenant" côté agent d'accueil.
+async function admissionList(req, res, next) {
+  try {
+    await promoteDueForAdmission(todayStr());
+    const { start, end } = todayRange();
+    const candidates = await prisma.candidate.findMany({
+      where: { datePassage: { gte: start, lt: end }, statut: 'ADMISSION' },
+      orderBy: { heureConvocation: 'asc' },
+    });
+    res.json({ candidates });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // POST /api/v1/queue/next
-// Appelle le prochain candidat WAITING (par ordre de numéro) et le passe à CALLED
+// Appelle le prochain candidat (priorité aux candidats déjà en ADMISSION,
+// c'est-à-dire déjà préparés ; à défaut, un candidat encore WAITING).
 async function callNext(req, res, next) {
   try {
     const { start, end } = todayRange();
 
     const next_ = await prisma.candidate.findFirst({
-      where: { datePassage: { gte: start, lt: end }, statut: 'WAITING' },
-      orderBy: { numero: 'asc' },
+      where: { datePassage: { gte: start, lt: end }, statut: { in: ['ADMISSION', 'WAITING'] } },
+      orderBy: [{ statut: 'asc' }, { numero: 'asc' }], // ADMISSION avant WAITING (ordre alpha du enum)
     });
 
     if (!next_) {
@@ -44,7 +87,7 @@ async function callNext(req, res, next) {
 
     const candidate = await prisma.candidate.update({
       where: { id: next_.id },
-      data: { statut: 'CALLED' },
+      data: { statut: 'CALLED', startedAt: new Date() },
     });
 
     await logAction(req.user?.id, 'CALL_NEXT_CANDIDATE', { candidateId: candidate.id, numero: candidate.numero });
@@ -61,7 +104,7 @@ async function complete(req, res, next) {
     const { id } = req.params;
     const candidate = await prisma.candidate.update({
       where: { id },
-      data: { statut: 'COMPLETED' },
+      data: { statut: 'COMPLETED', completedAt: new Date() },
     });
     await logAction(req.user?.id, 'COMPLETE_CANDIDATE', { candidateId: id });
     res.json({ candidate });
@@ -85,4 +128,4 @@ async function markAbsent(req, res, next) {
   }
 }
 
-module.exports = { current, callNext, complete, markAbsent };
+module.exports = { current, admissionCurrent, admissionList, callNext, complete, markAbsent };
