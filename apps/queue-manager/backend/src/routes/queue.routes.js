@@ -3,6 +3,7 @@ const {
   current,
   admissionCurrent,
   admissionList,
+  publicStats,
   callNext,
   complete,
   markAbsent,
@@ -14,6 +15,7 @@ const router = express.Router();
 // Routes publiques — consommées par l'écran /display sans authentification
 router.get('/current', current);
 router.get('/admission-current', admissionCurrent);
+router.get('/public-stats', publicStats);
 
 router.use(authenticate);
 router.get('/admission-list', requireRole(['SUPER_ADMIN', 'ADMIN', 'RECEPTION', 'EXAM_CENTER_AGENT']), admissionList);
