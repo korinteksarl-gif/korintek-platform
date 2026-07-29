@@ -54,6 +54,17 @@ export default function Agent() {
     refresh();
   }
 
+  async function replayCall() {
+    if (!current) return;
+    setMessage('');
+    try {
+      const { data } = await apiClient.post(`/queue/${current.id}/replay-call`);
+      setCurrent(data.candidate);
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Erreur.');
+    }
+  }
+
   function logout() {
     localStorage.removeItem('korintek_token');
     localStorage.removeItem('korintek_user');
@@ -97,11 +108,14 @@ export default function Agent() {
               Examen : {current.examen}{current.poste ? ` · ${current.poste}` : ''}
             </p>
             {current.retardMinutes > 0 && (
-              <p className={`text-sm font-semibold mb-8 ${current.retardMinutes > 15 ? 'text-red-600' : 'text-amber-600'}`}>
+              <p className={`text-sm font-semibold mb-2 ${current.retardMinutes > 15 ? 'text-red-600' : 'text-amber-600'}`}>
                 ⚠ Retard estimé : +{current.retardMinutes} min
               </p>
             )}
-            {!current.retardMinutes && <div className="mb-8" />}
+            <p className="text-xs text-slate-400 mb-8">
+              Appel diffusé {current.callCount ?? 1}/3 fois
+              {current.callCount >= 3 && ' — maximum atteint'}
+            </p>
           </>
         ) : (
           <p className="text-2xl text-slate-300 mb-10">Aucun candidat appelé</p>
@@ -133,6 +147,13 @@ export default function Agent() {
               ABSENT
             </button>
           </div>
+          <button
+            onClick={replayCall}
+            disabled={!current || (current.callCount ?? 1) >= 3}
+            className="bg-white border-2 border-korintek-teal text-korintek-tealDark text-base font-semibold rounded-2xl py-3 disabled:opacity-30 disabled:border-slate-300 disabled:text-slate-400"
+          >
+            🔁 Répéter l'appel
+          </button>
         </div>
       </div>
     </div>
