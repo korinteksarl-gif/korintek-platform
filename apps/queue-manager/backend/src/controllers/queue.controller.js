@@ -1,6 +1,6 @@
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
-const { promoteDueForAdmission } = require('../utils/timing');
+const { promoteDueForAdmission, autoReplayCalls, CALL_REPLAY_MAX_COUNT } = require('../utils/timing');
 
 function todayRange() {
   const start = new Date();
@@ -17,10 +17,12 @@ function todayStr() {
 // GET /api/v1/queue/current
 // Renvoie le dernier candidat appelé en salle d'examen (affiché sur l'écran
 // salle d'attente et la tablette agent). Déclenche aussi le passage en
-// ADMISSION des candidats arrivant à J-15min (pas de cron nécessaire).
+// ADMISSION des candidats arrivant à J-15min, ainsi que la répétition
+// automatique de l'appel toutes les minutes (jusqu'à 3 fois) — pas de cron nécessaire.
 async function current(req, res, next) {
   try {
     await promoteDueForAdmission(todayStr());
+    await autoReplayCalls(todayStr());
     const { start, end } = todayRange();
     const candidate = await prisma.candidate.findFirst({
       where: {
@@ -85,12 +87,41 @@ async function callNext(req, res, next) {
       return res.status(404).json({ error: "Aucun candidat en attente aujourd'hui." });
     }
 
+    const now = new Date();
     const candidate = await prisma.candidate.update({
       where: { id: next_.id },
-      data: { statut: 'CALLED', startedAt: new Date() },
+      data: { statut: 'CALLED', startedAt: now, callCount: 1, lastCalledAt: now },
     });
 
     await logAction(req.user?.id, 'CALL_NEXT_CANDIDATE', { candidateId: candidate.id, numero: candidate.numero });
+
+    res.json({ candidate });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/v1/queue/:id/replay-call
+// Rejoue immédiatement l'annonce (chime + voix) pour le candidat actuellement appelé,
+// sans attendre la répétition automatique. Compte dans la limite de 3 diffusions.
+async function replayCall(req, res, next) {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.candidate.findUnique({ where: { id } });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Candidat introuvable.' });
+    }
+    if (existing.callCount >= CALL_REPLAY_MAX_COUNT) {
+      return res.status(400).json({ error: `Nombre maximum d'appels atteint (${CALL_REPLAY_MAX_COUNT}).` });
+    }
+
+    const candidate = await prisma.candidate.update({
+      where: { id },
+      data: { callCount: { increment: 1 }, lastCalledAt: new Date() },
+    });
+
+    await logAction(req.user?.id, 'REPLAY_CALL', { candidateId: id, callCount: candidate.callCount });
 
     res.json({ candidate });
   } catch (err) {
@@ -152,4 +183,13 @@ async function publicStats(req, res, next) {
   }
 }
 
-module.exports = { current, admissionCurrent, admissionList, publicStats, callNext, complete, markAbsent };
+module.exports = {
+  current,
+  admissionCurrent,
+  admissionList,
+  publicStats,
+  callNext,
+  replayCall,
+  complete,
+  markAbsent,
+};
