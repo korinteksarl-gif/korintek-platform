@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const { generateCandidateNumber } = require('../utils/candidateNumber');
 const { logAction } = require('../utils/audit');
+const { promoteDueForAdmission, annotateWithDelays } = require('../utils/timing');
 
 function dayRange(dateStr) {
   const start = new Date(dateStr);
@@ -14,8 +15,13 @@ function dayRange(dateStr) {
 async function list(req, res, next) {
   try {
     const { date, statut, search } = req.query;
-    const where = {};
+    const targetDate = date || new Date().toISOString().slice(0, 10);
 
+    // Déclenche le passage automatique WAITING -> ADMISSION pour les candidats
+    // du jour concerné, avant de renvoyer la liste (pas de cron nécessaire).
+    await promoteDueForAdmission(targetDate);
+
+    const where = {};
     if (date) {
       const { start, end } = dayRange(date);
       where.datePassage = { gte: start, lt: end };
@@ -36,7 +42,7 @@ async function list(req, res, next) {
       orderBy: { numero: 'asc' },
     });
 
-    res.json({ candidates });
+    res.json({ candidates: annotateWithDelays(candidates) });
   } catch (err) {
     next(err);
   }
@@ -46,6 +52,7 @@ async function list(req, res, next) {
 async function stats(req, res, next) {
   try {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
+    await promoteDueForAdmission(date);
     const { start, end } = dayRange(date);
 
     const candidates = await prisma.candidate.findMany({
@@ -56,6 +63,7 @@ async function stats(req, res, next) {
     const counts = {
       total: candidates.length,
       WAITING: 0,
+      ADMISSION: 0,
       CALLED: 0,
       IN_PROGRESS: 0,
       COMPLETED: 0,
@@ -72,7 +80,7 @@ async function stats(req, res, next) {
 // POST /api/v1/candidates
 async function create(req, res, next) {
   try {
-    const { nom, prenom, email, telephone, examen, datePassage, heureConvocation } = req.body;
+    const { nom, prenom, email, telephone, examen, datePassage, heureConvocation, poste, dureeMinutes } = req.body;
 
     if (!nom || !prenom || !examen || !datePassage || !heureConvocation) {
       return res.status(400).json({ error: 'Champs obligatoires manquants (nom, prénom, examen, date, heure).' });
@@ -88,6 +96,8 @@ async function create(req, res, next) {
         email: email || null,
         telephone: telephone || null,
         examen,
+        poste: poste || null,
+        dureeMinutes: dureeMinutes ? Number(dureeMinutes) : 120,
         datePassage: new Date(datePassage),
         heureConvocation,
       },
@@ -105,21 +115,25 @@ async function create(req, res, next) {
 async function update(req, res, next) {
   try {
     const { id } = req.params;
-    const { nom, prenom, email, telephone, examen, datePassage, heureConvocation, statut } = req.body;
+    const { nom, prenom, email, telephone, examen, datePassage, heureConvocation, statut, poste, dureeMinutes } = req.body;
 
-    const candidate = await prisma.candidate.update({
-      where: { id },
-      data: {
-        ...(nom && { nom }),
-        ...(prenom && { prenom }),
-        ...(email !== undefined && { email }),
-        ...(telephone !== undefined && { telephone }),
-        ...(examen && { examen }),
-        ...(datePassage && { datePassage: new Date(datePassage) }),
-        ...(heureConvocation && { heureConvocation }),
-        ...(statut && { statut }),
-      },
-    });
+    const data = {
+      ...(nom && { nom }),
+      ...(prenom && { prenom }),
+      ...(email !== undefined && { email }),
+      ...(telephone !== undefined && { telephone }),
+      ...(examen && { examen }),
+      ...(datePassage && { datePassage: new Date(datePassage) }),
+      ...(heureConvocation && { heureConvocation }),
+      ...(poste !== undefined && { poste }),
+      ...(dureeMinutes !== undefined && { dureeMinutes: Number(dureeMinutes) }),
+      ...(statut && { statut }),
+    };
+
+    if (statut === 'CALLED') data.startedAt = new Date();
+    if (statut === 'COMPLETED') data.completedAt = new Date();
+
+    const candidate = await prisma.candidate.update({ where: { id }, data });
 
     await logAction(req.user?.id, 'UPDATE_CANDIDATE', { candidateId: id });
 
