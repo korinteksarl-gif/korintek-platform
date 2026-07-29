@@ -50,4 +50,22 @@ async function toggleActive(req, res, next) {
   }
 }
 
-module.exports = { list, updateRole, toggleActive };
+// DELETE /api/v1/users/:id
+async function remove(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user.id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' });
+    }
+
+    await prisma.user.delete({ where: { id } });
+    await logAction(req.user?.id, 'DELETE_USER', { targetUserId: id });
+
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, updateRole, toggleActive, remove };
