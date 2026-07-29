@@ -22,7 +22,7 @@ services:
     runtime: node
     plan: free
     rootDir: apps/queue-manager/backend
-    buildCommand: npm install && npx prisma generate && npx prisma db push --accept-data-loss && node prisma/seed.js
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
@@ -34,6 +34,17 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 8h
+      - key: AZURE_CLIENT_ID
+        value: dca354c3-b920-41af-aa90-abf4a31969d4
+      - key: AZURE_TENANT_ID
+        value: 9cdff590-bed7-4a7a-a6c4-6aadd7edf896
+      - key: AZURE_CLIENT_SECRET
+        sync: false
+        # ↑ Renseigner manuellement dans le Dashboard Render avec la valeur du
+        # Client Secret créé/récupéré dans le portail Azure (App registration
+        # "KORINTEK Facturation" > Certificates & secrets).
+      - key: AZURE_REDIRECT_URI
+        value: https://korintek-queue-api.onrender.com/api/v1/auth/microsoft/callback
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL

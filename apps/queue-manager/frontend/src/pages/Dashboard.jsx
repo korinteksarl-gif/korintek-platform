@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';
+import Logo from '../components/Logo.jsx';
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const STATUT_LABELS = {
@@ -80,26 +81,45 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-korintek-blueDark">KORINTEK Queue Manager</h1>
-          <p className="text-xs text-slate-500">Tableau de bord — {user?.prenom} {user?.nom} ({user?.role})</p>
+      <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Logo size={36} showWordmark={false} />
+          <div>
+            <h1 className="font-heading font-bold text-korintek-ink">Tableau de bord</h1>
+            <p className="text-xs text-slate-400">{user?.prenom} {user?.nom} · {user?.role}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
+          {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN') && (
+            <button
+              onClick={() => navigate('/ads')}
+              className="text-sm text-korintek-tealDark hover:underline"
+            >
+              Publicités
+            </button>
+          )}
+          {user?.role === 'SUPER_ADMIN' && (
+            <button
+              onClick={() => navigate('/users')}
+              className="text-sm text-korintek-tealDark hover:underline"
+            >
+              Utilisateurs
+            </button>
+          )}
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-korintek-teal/40 focus:border-korintek-teal"
           />
-          <button onClick={logout} className="text-sm text-slate-500 hover:text-slate-800">Déconnexion</button>
+          <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-700">Déconnexion</button>
         </div>
       </header>
 
       <main className="p-6 max-w-6xl mx-auto space-y-6">
         <section className="grid grid-cols-2 md:grid-cols-6 gap-3">
           {cards.map((c) => (
-            <div key={c.key} className={`rounded-xl p-4 ${c.color}`}>
+            <div key={c.key} className={`rounded-xl p-4 shadow-card ${c.color}`}>
               <p className="text-2xl font-bold">{stats ? stats[c.key] : '—'}</p>
               <p className="text-xs font-medium mt-1">{c.label}</p>
             </div>
@@ -109,7 +129,7 @@ export default function Dashboard() {
         <section className="flex flex-wrap gap-3">
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="bg-korintek-blue hover:bg-korintek-blueDark text-white text-sm font-medium rounded-lg px-4 py-2"
+            className="bg-korintek-teal hover:bg-korintek-tealDark text-white text-sm font-medium rounded-lg px-4 py-2"
           >
             + Ajouter candidat
           </button>
@@ -148,13 +168,13 @@ export default function Dashboard() {
               onChange={(e) => setForm({ ...form, heureConvocation: e.target.value })}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
-            <button type="submit" className="md:col-span-3 bg-korintek-blue text-white rounded-lg py-2 font-medium text-sm">
+            <button type="submit" className="md:col-span-3 bg-korintek-teal text-white rounded-lg py-2 font-medium text-sm">
               Enregistrer le candidat
             </button>
           </form>
         )}
 
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section className="bg-white border border-slate-100 rounded-xl shadow-card overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-left">
               <tr>

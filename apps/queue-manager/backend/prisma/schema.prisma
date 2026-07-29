@@ -12,6 +12,7 @@ datasource db {
 }
 
 enum Role {
+  PENDING
   SUPER_ADMIN
   ADMIN
   RECEPTION
@@ -33,8 +34,9 @@ model User {
   nom          String
   prenom       String
   email        String     @unique
-  passwordHash String
-  role         Role
+  passwordHash String?
+  azureId      String?    @unique // "oid" claim Entra ID — présent pour les comptes SSO Office 365
+  role         Role       @default(PENDING)
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   auditLogs    AuditLog[]
@@ -70,4 +72,16 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model Advertisement {
+  id        String   @id @default(uuid())
+  title     String?
+  imageData String   @db.Text // image encodée en base64 (data URL) — pas de stockage fichier externe requis
+  linkUrl   String?
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("advertisements")
 }

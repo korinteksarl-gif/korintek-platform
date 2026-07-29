@@ -29,11 +29,42 @@ Chaque `app` est déployée comme un service Render indépendant. Les `packages/
 partagés par import relatif et deviendront un vrai design system npm interne lorsque
 le nombre de modules le justifiera.
 
-## 2. Rôles KORINTEK ID
+## 2. Authentification — Microsoft Entra ID (Office 365 SSO)
+
+Le Queue Manager utilise le même mécanisme que facturation.korintek.com : connexion
+via le bouton "Se connecter avec Microsoft 365", pas de mot de passe local à gérer.
+
+**App registration réutilisée** : "KORINTEK Facturation" dans le portail Azure
+(Client ID `dca354c3-b920-41af-aa90-abf4a31969d4`, Tenant `9cdff590-bed7-4a7a-a6c4-6aadd7edf896`).
+
+**Étape obligatoire côté Azure avant le premier test** : dans cette app registration →
+**Authentication** → **Redirect URIs** → ajouter :
+```
+https://korintek-queue-api.onrender.com/api/v1/auth/microsoft/callback
+```
+(remplacer par l'URL réelle du backend si différente, ou par `https://api.queue.korintek.com/...`
+si un domaine personnalisé est configuré plus tard).
+
+**Client Secret** : si l'app registration n'a pas déjà un secret valide et non expiré,
+en créer un nouveau (**Certificates & secrets** → **New client secret**) et le renseigner
+dans `AZURE_CLIENT_SECRET` sur Render (jamais dans le repo Git).
+
+**Attribution des rôles** : un compte Office 365 qui se connecte pour la première fois
+est créé automatiquement avec le rôle `PENDING` (aucun accès). Un `SUPER_ADMIN` doit
+ensuite lui attribuer un rôle réel via l'écran **"Utilisateurs"** (visible dans le
+Dashboard, lien en haut à droite pour les SUPER_ADMIN). Voir section 2 "Rôles KORINTEK ID"
+ci-dessous pour la liste des rôles disponibles.
+
+Note : l'ancien login par email/mot de passe (`POST /api/v1/auth/login`) reste actif
+côté backend pour compatibilité (utile par ex. pour un compte de secours local), mais
+n'est plus exposé dans l'interface — celle-ci ne propose que le SSO Microsoft.
+
+## 3. Rôles KORINTEK ID
 
 | Rôle | Accès |
 |---|---|
-| SUPER_ADMIN | Tout, y compris suppression et audit |
+| PENDING | Aucun — compte créé automatiquement via SSO, en attente d'attribution par un SUPER_ADMIN |
+| SUPER_ADMIN | Tout, y compris suppression, audit et gestion des utilisateurs |
 | ADMIN | Gestion candidats, file, import, audit |
 | RECEPTION | Ajout/modification candidats, import, appel de la file |
 | EXAM_CENTER_AGENT | Mode agent d'accueil (appeler/terminer/absent) uniquement |

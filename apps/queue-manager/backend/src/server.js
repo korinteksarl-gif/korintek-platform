@@ -9,6 +9,8 @@ const candidatesRoutes = require('./routes/candidates.routes');
 const queueRoutes = require('./routes/queue.routes');
 const importRoutes = require('./routes/import.routes');
 const auditRoutes = require('./routes/audit.routes');
+const usersRoutes = require('./routes/users.routes');
+const adsRoutes = require('./routes/ads.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -20,7 +22,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'korintek-queue-manager-api' }));
@@ -30,6 +32,8 @@ app.use('/api/v1/candidates', candidatesRoutes);
 app.use('/api/v1/queue', queueRoutes);
 app.use('/api/v1/import', importRoutes);
 app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/users', usersRoutes);
+app.use('/api/v1/ads', adsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Route introuvable.' }));
 app.use(errorHandler);
