@@ -3,7 +3,7 @@ import apiClient from '../api/client';
 
 // Écran public de salle d'attente — aucune authentification requise (lecture seule).
 // Deux types d'annonces sonores distincts :
-//   1. Appel en salle d'examen — carillon 2 notes + voix "présentez-vous à l'accueil"
+//   1. Appel en salle d'examen — carillon 4 notes façon aéroport + voix
 //   2. Formalités d'admission (T-15min) — carillon 3 notes montantes + voix "montez
 //      avec vos effets personnels" + bandeau visuel temporaire en haut de l'écran.
 // Panneau publicitaire configurable (gauche/droite) : ajouter ?ads=left à l'URL.
@@ -11,10 +11,15 @@ import apiClient from '../api/client';
 
 const SOUND_PREF_KEY = 'korintek_display_sound_unlocked';
 
+// Carillon façon annonce d'aéroport — motif "ding-dong, ding-dong" descendant en
+// 4 notes, immédiatement reconnaissable et conçu pour capter l'attention avant
+// l'annonce vocale de l'appel en salle d'examen.
 function playChime(audioCtx) {
   const notes = [
-    { freq: 523.25, start: 0, duration: 0.35 },
-    { freq: 783.99, start: 0.3, duration: 0.5 },
+    { freq: 783.99, start: 0, duration: 0.28 },     // Sol5 — "ding"
+    { freq: 659.25, start: 0.26, duration: 0.4 },   // Mi5 — "dong"
+    { freq: 783.99, start: 0.75, duration: 0.28 },  // Sol5 — "ding"
+    { freq: 523.25, start: 1.01, duration: 0.55 },  // Do5 — "dong" (plus long, final)
   ];
   notes.forEach(({ freq, start, duration }) => {
     const osc = audioCtx.createOscillator();
@@ -25,7 +30,7 @@ function playChime(audioCtx) {
     gain.connect(audioCtx.destination);
     const t0 = audioCtx.currentTime + start;
     gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(0.35, t0 + 0.05);
+    gain.gain.linearRampToValueAtTime(0.4, t0 + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     osc.start(t0);
     osc.stop(t0 + duration + 0.05);
@@ -234,12 +239,16 @@ export default function Display() {
     return () => clearInterval(t);
   }, []);
 
+  // Poll de l'appel en salle d'examen — la clé de suivi combine id + callCount pour
+  // détecter aussi bien un nouveau candidat qu'une simple répétition (rappel manuel
+  // ou automatique toutes les minutes) du même candidat.
   useEffect(() => {
     async function poll() {
       try {
         const { data } = await apiClient.get('/queue/current');
-        if (data.candidate && data.candidate.id !== lastId.current) {
-          lastId.current = data.candidate.id;
+        const key = data.candidate ? `${data.candidate.id}:${data.candidate.callCount ?? 1}` : null;
+        if (key && key !== lastId.current) {
+          lastId.current = key;
           setPulse(true);
           setTimeout(() => setPulse(false), 1500);
 
@@ -249,7 +258,7 @@ export default function Display() {
               speakAnnouncement(
                 `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Veuillez vous présenter à l'accueil.`
               );
-            }, 900);
+            }, 1750);
           }
         }
         setCurrent(data.candidate);
