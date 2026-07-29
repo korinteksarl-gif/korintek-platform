@@ -1,23 +1,16 @@
-// Badge KORINTEK — monogramme circulaire dans la couleur de marque exacte (#00BAD2,
-// extraite du logo officiel). Utilisé en en-tête de chaque écran pour une identité
-// visuelle cohérente avec korintek.com.
+// Badge KORINTEK — utilise le vrai logo officiel (fichier public/logo-korintek.png),
+// affiché de façon cohérente sur tous les écrans de l'application.
 export default function Logo({ size = 40, showWordmark = true, dark = false }) {
   return (
     <div className="flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
-        <circle cx="20" cy="20" r="19" fill="none" stroke="#00BAD2" strokeWidth="2" />
-        <text
-          x="20"
-          y="27"
-          textAnchor="middle"
-          fontFamily="Manrope, sans-serif"
-          fontWeight="800"
-          fontSize="18"
-          fill="#00BAD2"
-        >
-          K
-        </text>
-      </svg>
+      <img
+        src="/logo-korintek.png"
+        alt="KORINTEK"
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+        className="rounded-full"
+      />
       {showWordmark && (
         <div className="leading-tight">
           <p className={`font-heading font-extrabold tracking-tight text-base ${dark ? 'text-white' : 'text-korintek-ink'}`}>
