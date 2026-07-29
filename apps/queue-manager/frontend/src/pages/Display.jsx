@@ -256,7 +256,7 @@ export default function Display() {
             playChime(audioCtxRef.current);
             setTimeout(() => {
               speakAnnouncement(
-                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Veuillez vous présenter à l'accueil.`
+                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Veuillez vous présenter à l'accueil. Merci.`
               );
             }, 1750);
           }
@@ -283,7 +283,7 @@ export default function Display() {
             playAdmissionChime(audioCtxRef.current);
             setTimeout(() => {
               speakAnnouncement(
-                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Merci de vous présenter à l'accueil pour les formalités d'admission. Munissez-vous de tous vos effets personnels.`
+                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Merci de vous présenter à l'accueil pour les formalités d'admission. Munissez-vous de tous vos effets personnels. Merci.`
               );
             }, 900);
           }
