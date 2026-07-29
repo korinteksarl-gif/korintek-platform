@@ -5,6 +5,8 @@
 const prisma = require('../config/db');
 
 const ADMISSION_LEAD_MINUTES = 15;
+const CALL_REPLAY_INTERVAL_MINUTES = 1;
+const CALL_REPLAY_MAX_COUNT = 3;
 
 function dayRange(dateStr) {
   const start = new Date(dateStr);
@@ -79,4 +81,39 @@ function annotateWithDelays(candidates) {
   }));
 }
 
-module.exports = { promoteDueForAdmission, computeOverrunMinutes, annotateWithDelays, ADMISSION_LEAD_MINUTES };
+// Répète automatiquement l'annonce d'appel (chime + voix sur /display) pour tout
+// candidat CALLED n'ayant pas encore atteint 3 diffusions, une minute après la
+// précédente. S'arrête de lui-même une fois le candidat marqué Terminé/Absent
+// (son statut change alors et sort du filtre ci-dessous), ou après 3 diffusions.
+async function autoReplayCalls(dateStr) {
+  const { start, end } = dayRange(dateStr);
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - CALL_REPLAY_INTERVAL_MINUTES * 60000);
+
+  const due = await prisma.candidate.findMany({
+    where: {
+      datePassage: { gte: start, lt: end },
+      statut: 'CALLED',
+      callCount: { lt: CALL_REPLAY_MAX_COUNT },
+      lastCalledAt: { lte: cutoff },
+    },
+  });
+
+  for (const c of due) {
+    await prisma.candidate.update({
+      where: { id: c.id },
+      data: { callCount: { increment: 1 }, lastCalledAt: now },
+    });
+  }
+
+  return due.length;
+}
+
+module.exports = {
+  promoteDueForAdmission,
+  computeOverrunMinutes,
+  annotateWithDelays,
+  autoReplayCalls,
+  ADMISSION_LEAD_MINUTES,
+  CALL_REPLAY_MAX_COUNT,
+};
