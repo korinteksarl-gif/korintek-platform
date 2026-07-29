@@ -60,6 +60,8 @@ model Candidate {
   statut              CandidateStatus  @default(WAITING)
   admissionNotifiedAt DateTime?        // horodatage du passage automatique en statut ADMISSION (T-15min)
   startedAt           DateTime?        // horodatage réel de début d'examen (passage à CALLED)
+  callCount           Int              @default(1) // nombre de fois où l'appel a été (re)diffusé — max 3
+  lastCalledAt        DateTime?        // horodatage du dernier appel/rappel diffusé — sert au rappel auto toutes les minutes
   completedAt         DateTime?        // horodatage réel de fin d'examen
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
