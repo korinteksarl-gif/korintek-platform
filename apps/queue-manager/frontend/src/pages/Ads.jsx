@@ -35,7 +35,7 @@ export default function Ads() {
       setLinkUrl('');
       load();
     } catch (err) {
-      setError(err.response?.data?.error || "Erreur lors de l'envoi de l'image.");
+      setError(err.response?.data?.error || "Erreur lors de l'envoi du fichier.");
     } finally {
       setUploading(false);
     }
@@ -75,15 +75,17 @@ export default function Ads() {
 
       <main className="p-6 max-w-3xl mx-auto space-y-6">
         <form onSubmit={handleUpload} className="bg-white border border-slate-100 rounded-xl shadow-card p-5 space-y-3">
-          <p className="text-sm font-medium text-korintek-ink">Ajouter une image publicitaire</p>
+          <p className="text-sm font-medium text-korintek-ink">Ajouter une image ou une vidéo publicitaire</p>
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             required
             onChange={(e) => setFile(e.target.files[0])}
             className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-korintek-tealLight file:text-korintek-tealDark file:font-medium"
           />
-          <p className="text-xs text-slate-400">Format recommandé : image verticale (portrait), max 3 Mo. JPG ou PNG.</p>
+          <p className="text-xs text-slate-400">
+            Format recommandé : portrait, max 15 Mo. Images (JPG/PNG) ou courtes vidéos en boucle (MP4, 5-10 secondes idéalement — la vidéo sera lue automatiquement en muet sur l'écran).
+          </p>
           <div className="grid md:grid-cols-2 gap-3">
             <input
               type="text"
@@ -106,31 +108,40 @@ export default function Ads() {
             disabled={uploading}
             className="bg-korintek-teal hover:bg-korintek-tealDark text-white text-sm font-medium rounded-lg px-4 py-2 disabled:opacity-60"
           >
-            {uploading ? 'Envoi...' : "Ajouter l'image"}
+            {uploading ? 'Envoi...' : 'Ajouter'}
           </button>
         </form>
 
         <div className="space-y-3">
-          {ads.map((ad, i) => (
-            <div key={ad.id} className="bg-white border border-slate-100 rounded-xl shadow-card p-4 flex items-center gap-4">
-              <img src={ad.imageData} alt={ad.title || 'Publicité'} className="w-16 h-24 object-cover rounded-lg border border-slate-100" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-korintek-ink truncate">{ad.title || '(sans titre)'}</p>
-                <p className="text-xs text-slate-400">Ordre {ad.order}</p>
+          {ads.map((ad, i) => {
+            const isVideo = ad.imageData?.startsWith('data:video');
+            return (
+              <div key={ad.id} className="bg-white border border-slate-100 rounded-xl shadow-card p-4 flex items-center gap-4">
+                {isVideo ? (
+                  <video src={ad.imageData} className="w-16 h-24 object-cover rounded-lg border border-slate-100" muted playsInline />
+                ) : (
+                  <img src={ad.imageData} alt={ad.title || 'Publicité'} className="w-16 h-24 object-cover rounded-lg border border-slate-100" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-korintek-ink truncate">
+                    {ad.title || '(sans titre)'} {isVideo && <span className="text-xs text-korintek-tealDark ml-1">🎬 vidéo</span>}
+                  </p>
+                  <p className="text-xs text-slate-400">Ordre {ad.order}</p>
+                </div>
+                <button onClick={() => move(ad, -1)} disabled={i === 0} className="text-slate-400 hover:text-korintek-teal disabled:opacity-30 text-lg px-1">↑</button>
+                <button onClick={() => move(ad, 1)} disabled={i === ads.length - 1} className="text-slate-400 hover:text-korintek-teal disabled:opacity-30 text-lg px-1">↓</button>
+                <button
+                  onClick={() => toggleActive(ad)}
+                  className={`text-xs font-medium rounded-full px-3 py-1 ${ad.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+                >
+                  {ad.active ? 'Actif' : 'Masqué'}
+                </button>
+                <button onClick={() => remove(ad.id)} className="text-red-500 hover:text-red-700 text-sm">Supprimer</button>
               </div>
-              <button onClick={() => move(ad, -1)} disabled={i === 0} className="text-slate-400 hover:text-korintek-teal disabled:opacity-30 text-lg px-1">↑</button>
-              <button onClick={() => move(ad, 1)} disabled={i === ads.length - 1} className="text-slate-400 hover:text-korintek-teal disabled:opacity-30 text-lg px-1">↓</button>
-              <button
-                onClick={() => toggleActive(ad)}
-                className={`text-xs font-medium rounded-full px-3 py-1 ${ad.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
-              >
-                {ad.active ? 'Actif' : 'Masqué'}
-              </button>
-              <button onClick={() => remove(ad.id)} className="text-red-500 hover:text-red-700 text-sm">Supprimer</button>
-            </div>
-          ))}
+            );
+          })}
           {!ads.length && (
-            <p className="text-center text-sm text-slate-400 py-8">Aucune image publicitaire pour le moment.</p>
+            <p className="text-center text-sm text-slate-400 py-8">Aucune publicité pour le moment.</p>
           )}
         </div>
       </main>

@@ -7,6 +7,9 @@ import apiClient from '../api/client';
 //   2. Formalités d'admission (T-15min) — carillon 3 notes montantes + voix "montez
 //      avec vos effets personnels" + bandeau visuel temporaire en haut de l'écran.
 // Panneau publicitaire configurable (gauche/droite) : ajouter ?ads=left à l'URL.
+// Bandeau d'information déroulant en bas d'écran (heure, slogan, statistiques du jour).
+
+const SOUND_PREF_KEY = 'korintek_display_sound_unlocked';
 
 function playChime(audioCtx) {
   const notes = [
@@ -29,8 +32,6 @@ function playChime(audioCtx) {
   });
 }
 
-// Carillon distinct pour les formalités d'admission — 3 notes montantes (sol-do-mi),
-// pour que le personnel et les candidats fassent bien la différence avec l'appel.
 function playAdmissionChime(audioCtx) {
   const notes = [
     { freq: 392.0, start: 0, duration: 0.22 },
@@ -77,17 +78,25 @@ function AdPanel({ ads }) {
   if (!ads.length) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 bg-[#062028] border-l border-white/5">
-        <svg width="56" height="56" viewBox="0 0 40 40" aria-hidden="true">
-          <circle cx="20" cy="20" r="19" fill="none" stroke="#00BAD2" strokeWidth="1.5" opacity="0.4" />
-          <text x="20" y="27" textAnchor="middle" fontFamily="Manrope, sans-serif" fontWeight="800" fontSize="18" fill="#00BAD2" opacity="0.4">K</text>
-        </svg>
+        <img src="/logo-korintek.png" alt="KORINTEK" width={56} height={56} className="opacity-40" />
         <p className="text-white/20 text-xs uppercase tracking-[0.25em]">Certifications Change Lives</p>
       </div>
     );
   }
 
   const ad = ads[index];
-  const content = (
+  const isVideo = ad.imageData?.startsWith('data:video');
+  const content = isVideo ? (
+    <video
+      key={ad.id}
+      src={ad.imageData}
+      className="w-full h-full object-cover"
+      autoPlay
+      muted
+      loop
+      playsInline
+    />
+  ) : (
     <img src={ad.imageData} alt={ad.title || 'Publicité'} className="w-full h-full object-cover" />
   );
 
@@ -110,12 +119,52 @@ function AdPanel({ ads }) {
   );
 }
 
+// Bandeau d'information défilant — heure en direct, slogan, statistiques du jour.
+// Le contenu est dupliqué une fois pour permettre une boucle de défilement continue
+// sans saut visible (animation CSS translateX(-50%) sur un contenu répété x2).
+function InfoTicker({ stats }) {
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    function updateClock() {
+      setClock(
+        new Date().toLocaleString('fr-FR', {
+          weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit',
+        })
+      );
+    }
+    updateClock();
+    const t = setInterval(updateClock, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const items = [
+    `🕐 ${clock}`,
+    'KORINTEK — Certifications Change Lives',
+    stats ? `👥 ${stats.waiting + stats.admission} candidat(s) en attente aujourd'hui` : null,
+    stats ? `✅ ${stats.completed} examen(s) terminé(s) aujourd'hui` : null,
+    'Merci de patienter, votre tour sera annoncé à l\'écran',
+  ].filter(Boolean);
+
+  const content = items.join('     •     ') + '     •     ';
+
+  return (
+    <div className="h-11 bg-[#062028] border-t border-white/10 flex items-center overflow-hidden">
+      <div className="ticker-track text-white/70 text-sm font-medium">
+        <span className="px-4">{content}</span>
+        <span className="px-4">{content}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Display() {
   const [current, setCurrent] = useState(null);
   const [pulse, setPulse] = useState(false);
   const [admissionNotice, setAdmissionNotice] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [ads, setAds] = useState([]);
+  const [publicStats, setPublicStats] = useState(null);
   const lastId = useRef(null);
   const lastAdmissionId = useRef(null);
   const audioCtxRef = useRef(null);
@@ -123,13 +172,39 @@ export default function Display() {
   const params = new URLSearchParams(window.location.search);
   const adsOnLeft = params.get('ads') === 'left';
 
-  function enableSound() {
+  function enableSound(announce = true) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     audioCtxRef.current = new AudioContextClass();
-    playChime(audioCtxRef.current);
-    speakAnnouncement('Annonces sonores activées.');
+    if (announce) {
+      playChime(audioCtxRef.current);
+      speakAnnouncement('Annonces sonores activées.');
+    }
     setSoundEnabled(true);
+    localStorage.setItem(SOUND_PREF_KEY, '1');
   }
+
+  // Tente de réactiver automatiquement le son après une actualisation de la page,
+  // si l'écran a déjà été débloqué une première fois sur cet appareil. Fonctionne de
+  // façon fiable si le navigateur est lancé en mode kiosque avec le flag
+  // --autoplay-policy=no-user-gesture-required (recommandé pour un poste TV dédié) ;
+  // sinon, le navigateur peut malgré tout redemander une interaction selon sa politique.
+  useEffect(() => {
+    if (localStorage.getItem(SOUND_PREF_KEY) === '1') {
+      try {
+        enableSound(false);
+      } catch {
+        // le navigateur a refusé la création automatique — le bouton restera visible
+      }
+    }
+    // Débloque aussi au premier clic/tap n'importe où sur l'écran, en secours.
+    function unlockOnFirstInteraction() {
+      if (!audioCtxRef.current) enableSound(false);
+      window.removeEventListener('click', unlockOnFirstInteraction);
+    }
+    window.addEventListener('click', unlockOnFirstInteraction);
+    return () => window.removeEventListener('click', unlockOnFirstInteraction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     async function loadAds() {
@@ -145,7 +220,20 @@ export default function Display() {
     return () => clearInterval(adsInterval);
   }, []);
 
-  // Poll de l'appel en salle d'examen (inchangé)
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const { data } = await apiClient.get('/queue/public-stats');
+        setPublicStats(data);
+      } catch {
+        // silencieux
+      }
+    }
+    loadStats();
+    const t = setInterval(loadStats, 30000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     async function poll() {
       try {
@@ -174,7 +262,6 @@ export default function Display() {
     return () => clearInterval(interval);
   }, [soundEnabled]);
 
-  // Poll des formalités d'admission (T-15min) — annonce distincte
   useEffect(() => {
     async function pollAdmission() {
       try {
@@ -192,7 +279,6 @@ export default function Display() {
             }, 900);
           }
 
-          // Le bandeau visuel reste affiché 12 secondes puis disparaît de lui-même.
           setTimeout(() => setAdmissionNotice((n) => (n?.id === data.candidate.id ? null : n)), 12000);
         }
       } catch {
@@ -205,55 +291,54 @@ export default function Display() {
   }, [soundEnabled]);
 
   const mainContent = (
-    <div className="flex-1 min-w-0 bg-[#04141A] text-white flex flex-col items-center justify-center px-8 relative">
-      {!soundEnabled && (
-        <button
-          onClick={enableSound}
-          className="absolute top-6 right-6 bg-korintek-teal hover:bg-korintek-tealDark text-white text-sm font-semibold rounded-full px-5 py-2.5 shadow-lg flex items-center gap-2 animate-pulse"
-        >
-          🔊 Activer le son
-        </button>
-      )}
-      {soundEnabled && (
-        <span className="absolute top-6 right-6 text-white/30 text-xs uppercase tracking-widest">🔊 Son activé</span>
-      )}
+    <div className="flex-1 min-w-0 bg-[#04141A] text-white flex flex-col relative">
+      <div className="flex-1 flex flex-col items-center justify-center px-8 relative">
+        {!soundEnabled && (
+          <button
+            onClick={() => enableSound(true)}
+            className="absolute top-6 right-6 bg-korintek-teal hover:bg-korintek-tealDark text-white text-sm font-semibold rounded-full px-5 py-2.5 shadow-lg flex items-center gap-2 animate-pulse"
+          >
+            🔊 Activer le son
+          </button>
+        )}
+        {soundEnabled && (
+          <span className="absolute top-6 right-6 text-white/30 text-xs uppercase tracking-widest">🔊 Son activé</span>
+        )}
 
-      {/* Bandeau "Formalités d'admission" — distinct de l'appel principal, disparaît après 12s */}
-      {admissionNotice && (
-        <div className="absolute top-0 left-0 right-0 bg-amber-500 text-[#04141A] px-6 py-3 text-center font-semibold shadow-lg animate-pulse">
-          ⏰ {admissionNotice.numero} — {admissionNotice.prenom} {admissionNotice.nom} : merci de monter à l'accueil avec vos effets personnels
+        {admissionNotice && (
+          <div className="absolute top-0 left-0 right-0 bg-amber-500 text-[#04141A] px-6 py-3 text-center font-semibold shadow-lg animate-pulse">
+            ⏰ {admissionNotice.numero} — {admissionNotice.prenom} {admissionNotice.nom} : merci de monter à l'accueil avec vos effets personnels
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 mb-6">
+          <img src="/logo-korintek.png" alt="KORINTEK" width={32} height={32} />
+          <p className="font-heading text-korintek-teal text-2xl font-extrabold tracking-[0.15em]">KORINTEK</p>
         </div>
-      )}
+        <p className="uppercase tracking-[0.3em] text-white/40 text-sm font-medium mb-10">Candidat appelé</p>
 
-      <div className="flex items-center gap-2 mb-6">
-        <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true">
-          <circle cx="20" cy="20" r="19" fill="none" stroke="#00BAD2" strokeWidth="2" />
-          <text x="20" y="27" textAnchor="middle" fontFamily="Manrope, sans-serif" fontWeight="800" fontSize="18" fill="#00BAD2">K</text>
-        </svg>
-        <p className="font-heading text-korintek-teal text-2xl font-extrabold tracking-[0.15em]">KORINTEK</p>
+        {current ? (
+          <div className={`text-center transition-transform duration-300 ${pulse ? 'scale-105' : 'scale-100'}`}>
+            <p className="font-heading text-[9rem] leading-none font-extrabold text-white drop-shadow-[0_0_40px_rgba(0,186,210,0.35)]">
+              {current.numero}
+            </p>
+            <p className="text-4xl font-bold text-korintek-teal mt-4 uppercase tracking-wide">
+              {current.prenom} {current.nom}
+            </p>
+          </div>
+        ) : (
+          <p className="text-3xl text-white/30">En attente du prochain appel...</p>
+        )}
+
+        <p className="mt-16 text-white/50 text-xl">Veuillez vous présenter à l'accueil</p>
       </div>
-      <p className="uppercase tracking-[0.3em] text-white/40 text-sm font-medium mb-10">Candidat appelé</p>
 
-      {current ? (
-        <div className={`text-center transition-transform duration-300 ${pulse ? 'scale-105' : 'scale-100'}`}>
-          <p className="font-heading text-[9rem] leading-none font-extrabold text-white drop-shadow-[0_0_40px_rgba(0,186,210,0.35)]">
-            {current.numero}
-          </p>
-          <p className="text-4xl font-bold text-korintek-teal mt-4 uppercase tracking-wide">
-            {current.prenom} {current.nom}
-          </p>
-        </div>
-      ) : (
-        <p className="text-3xl text-white/30">En attente du prochain appel...</p>
-      )}
-
-      <p className="mt-16 text-white/50 text-xl">Veuillez vous présenter à l'accueil</p>
-      <p className="mt-2 text-white/20 text-xs uppercase tracking-[0.2em]">Certifications Change Lives</p>
+      <InfoTicker stats={publicStats} />
     </div>
   );
 
   const adPanel = (
-    <div className="w-[30%] min-w-[280px] max-w-[420px]">
+    <div className="w-[36%] min-w-[340px] max-w-[560px]">
       <AdPanel ads={ads} />
     </div>
   );
