@@ -1,0 +1,143 @@
+// KORINTEK TRAINING — Schéma de base de données
+// Module d'inscription aux formations, suivi jusqu'à la délivrance de l'attestation.
+// Réutilise la même identité KORINTEK ID (Microsoft Entra ID) que le Queue Manager
+// pour l'accès du personnel ; les étudiants, eux, ne se connectent pas (inscription
+// publique ou saisie par l'équipe, sans compte requis).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  PENDING
+  SUPER_ADMIN
+  ADMIN
+  TRAINER
+  FINANCE
+}
+
+model StaffUser {
+  id           String   @id @default(uuid())
+  nom          String
+  prenom       String
+  email        String   @unique
+  azureId      String?  @unique
+  role         StaffRole @default(PENDING)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("staff_users")
+}
+
+enum EnrollmentStatus {
+  PENDING           // inscrit, paiement non encore confirmé
+  PAYMENT_PARTIAL   // acompte versé
+  PAID              // payé intégralement
+  IN_PROGRESS       // formation en cours
+  COMPLETED         // terminée avec succès — éligible à l'attestation
+  DROPPED           // abandon
+}
+
+enum PaymentMethod {
+  MOBILE_MONEY
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum EnrolledVia {
+  SELF   // inscription en ligne par l'étudiant lui-même
+  STAFF  // saisie par l'équipe KORINTEK (accueil/agent)
+}
+
+model Course {
+  id            String    @id @default(uuid())
+  title         String
+  description   String?   @db.Text
+  durationHours Int       @default(0)
+  price         Int       @default(0) // en FCFA
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  sessions      Session[]
+  enrollments   Enrollment[]
+
+  @@map("courses")
+}
+
+model Session {
+  id         String       @id @default(uuid())
+  courseId   String
+  course     Course       @relation(fields: [courseId], references: [id])
+  startDate  DateTime     @db.Date
+  endDate    DateTime?    @db.Date
+  formateur  String?
+  capacity   Int?
+  active     Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  enrollments Enrollment[]
+
+  @@map("sessions")
+}
+
+model Student {
+  id          String       @id @default(uuid())
+  nom         String
+  prenom      String
+  email       String?
+  telephone   String?
+  createdAt   DateTime     @default(now())
+  enrollments Enrollment[]
+
+  @@map("students")
+}
+
+model Enrollment {
+  id            String            @id @default(uuid())
+  studentId     String
+  student       Student           @relation(fields: [studentId], references: [id])
+  courseId      String
+  course        Course            @relation(fields: [courseId], references: [id])
+  sessionId     String?
+  session       Session?          @relation(fields: [sessionId], references: [id])
+  statut        EnrollmentStatus  @default(PENDING)
+  enrolledVia   EnrolledVia       @default(SELF)
+  paymentMethod PaymentMethod?
+  amountDue     Int               @default(0)
+  amountPaid    Int               @default(0)
+  notes         String?           @db.Text
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  certificate   Certificate?
+
+  @@map("enrollments")
+}
+
+model Certificate {
+  id                    String     @id @default(uuid())
+  enrollmentId          String     @unique
+  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id])
+  numero                String     @unique // ex: KTK-2026-000123
+  studentNameSnapshot   String
+  courseTitleSnapshot   String
+  durationHoursSnapshot Int
+  completionDate        DateTime   @db.Date
+  issuedAt              DateTime   @default(now())
+
+  @@map("certificates")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("training_audit_logs")
+}

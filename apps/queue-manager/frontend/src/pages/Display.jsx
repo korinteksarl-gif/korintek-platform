@@ -3,7 +3,7 @@ import apiClient from '../api/client';
 
 // Écran public de salle d'attente — aucune authentification requise (lecture seule).
 // Deux types d'annonces sonores distincts :
-//   1. Appel en salle d'examen — carillon 4 notes façon aéroport + voix
+//   1. Appel en salle d'examen — carillon 2 notes + voix "présentez-vous à l'accueil"
 //   2. Formalités d'admission (T-15min) — carillon 3 notes montantes + voix "montez
 //      avec vos effets personnels" + bandeau visuel temporaire en haut de l'écran.
 // Panneau publicitaire configurable (gauche/droite) : ajouter ?ads=left à l'URL.
@@ -69,6 +69,20 @@ function speakAnnouncement(text) {
   const frenchVoice = voices.find((v) => v.lang === 'fr-FR') || voices.find((v) => v.lang?.startsWith('fr'));
   if (frenchVoice) utterance.voice = frenchVoice;
   window.speechSynthesis.speak(utterance);
+}
+
+// Les moteurs de synthèse vocale traitent souvent un mot ENTIÈREMENT EN MAJUSCULES
+// comme un sigle et l'épellent lettre par lettre (ex: "TSOGBE" → "T-S-O-G-B-E").
+// On repasse donc les noms en casse normale avant de les faire lire à voix haute,
+// ce qui suffit à corriger ce comportement pour la grande majorité des navigateurs —
+// gratuit, sans dépendre d'un service de synthèse vocale tiers.
+function toSpokenCase(name) {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .split(/([\s'-])/) // conserve espaces, apostrophes et tirets comme séparateurs de mots
+    .map((part) => (/[\s'-]/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join('');
 }
 
 function AdPanel({ ads }) {
@@ -256,7 +270,7 @@ export default function Display() {
             playChime(audioCtxRef.current);
             setTimeout(() => {
               speakAnnouncement(
-                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Veuillez vous présenter à l'accueil. Merci.`
+                `Candidat ${data.candidate.numero}. ${toSpokenCase(data.candidate.prenom)} ${toSpokenCase(data.candidate.nom)}. Veuillez vous présenter à l'accueil. Merci.`
               );
             }, 1750);
           }
@@ -283,7 +297,7 @@ export default function Display() {
             playAdmissionChime(audioCtxRef.current);
             setTimeout(() => {
               speakAnnouncement(
-                `Candidat ${data.candidate.numero}. ${data.candidate.prenom} ${data.candidate.nom}. Merci de vous présenter à l'accueil pour les formalités d'admission. Munissez-vous de tous vos effets personnels. Merci.`
+                `Candidat ${data.candidate.numero}. ${toSpokenCase(data.candidate.prenom)} ${toSpokenCase(data.candidate.nom)}. Merci de vous présenter à l'accueil pour les formalités d'admission. Munissez-vous de tous vos effets personnels. Merci.`
               );
             }, 900);
           }

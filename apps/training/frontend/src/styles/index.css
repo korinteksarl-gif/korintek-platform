@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply font-sans text-slate-800; }
+h1, h2, h3, .font-heading { font-family: 'Manrope', -apple-system, sans-serif; }
