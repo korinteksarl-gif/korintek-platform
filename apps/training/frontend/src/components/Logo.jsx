@@ -17,7 +17,7 @@ export default function Logo({ size = 40, showWordmark = true, dark = false }) {
             KORINTEK
           </p>
           <p className={`text-[10px] font-medium tracking-wide uppercase ${dark ? 'text-white/60' : 'text-slate-400'}`}>
-            Queue Manager
+            Training
           </p>
         </div>
       )}
