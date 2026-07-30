@@ -59,23 +59,3 @@ async function me(req, res) {
 }
 
 module.exports = { microsoftLogin, microsoftCallback, me };
-
-// POST /api/v1/auth/bootstrap-admin
-// Utilitaire temporaire à usage unique : si AUCUN compte SUPER_ADMIN n'existe encore
-// dans la base, permet au premier utilisateur connecté (statut PENDING) de s'auto-
-// attribuer SUPER_ADMIN. Se désactive de lui-même dès qu'un SUPER_ADMIN existe déjà.
-async function bootstrapAdmin(req, res, next) {
-  try {
-    const prisma = require('../config/db');
-    const existingAdmin = await prisma.staffUser.findFirst({ where: { role: 'SUPER_ADMIN' } });
-    if (existingAdmin) {
-      return res.status(403).json({ error: 'Un SUPER_ADMIN existe déjà — cet utilitaire est désactivé.' });
-    }
-    const user = await prisma.staffUser.update({ where: { id: req.user.id }, data: { role: 'SUPER_ADMIN' } });
-    res.json({ message: 'Vous êtes maintenant SUPER_ADMIN.', user });
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports.bootstrapAdmin = bootstrapAdmin;
