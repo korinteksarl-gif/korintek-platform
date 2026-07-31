@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const enrollmentsRoutes = require('./routes/enrollments.routes');
 const certificatesRoutes = require('./routes/certificates.routes');
+const usersRoutes = require('./routes/users.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/courses', coursesRoutes);
 app.use('/api/v1/enrollments', enrollmentsRoutes);
 app.use('/api/v1/certificates', certificatesRoutes);
+app.use('/api/v1/users', usersRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Route introuvable.' }));
 app.use(errorHandler);
