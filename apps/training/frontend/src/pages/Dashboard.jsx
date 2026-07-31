@@ -83,6 +83,11 @@ export default function Dashboard() {
               Formations
             </button>
           )}
+          {user?.role === 'SUPER_ADMIN' && (
+            <button onClick={() => navigate('/users')} className="text-sm text-korintek-tealDark hover:underline">
+              Utilisateurs
+            </button>
+          )}
           <a href="/catalogue" className="text-sm text-korintek-tealDark hover:underline">Catalogue public</a>
           <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-700">Déconnexion</button>
         </div>
