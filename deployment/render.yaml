@@ -14,7 +14,10 @@
 # 4. La coller dans la variable DATABASE_URL du service korintek-queue-api ci-dessous,
 #    directement dans le Dashboard Render (elle est marquée sync: false pour ne pas
 #    figurer en clair dans le repo Git).
-
+#
+# IMPORTANT — 30/07/2026 : ce projet Neon.tech doit être DÉDIÉ au Queue Manager,
+# distinct de celui utilisé par Training. Ne jamais partager la même base entre
+# les deux applications (cause de l'incident de suppression de tables du 30/07/2026).
 services:
   # --- Backend API ---
   - type: web
@@ -22,14 +25,15 @@ services:
     runtime: node
     plan: free
     rootDir: apps/queue-manager/backend
-    buildCommand: npm install && npx prisma generate && npx prisma db push --accept-data-loss && node prisma/seed.js
+    buildCommand: npm install && npx prisma generate && npx prisma db push && node prisma/seed.js
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
         sync: false
         # ↑ Renseigner manuellement dans le Dashboard Render avec la connection
         # string Neon.tech (voir instructions ci-dessus). Ne jamais commit cette
-        # valeur dans Git.
+        # valeur dans Git. Doit pointer vers un projet Neon dédié au Queue Manager,
+        # jamais partagé avec Training.
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
@@ -60,7 +64,6 @@ services:
     # carte bancaire) qui appelle GET https://<url-du-service>/health toutes les
     # 10 minutes pendant les heures d'ouverture du centre d'examen. Voir README
     # section 6bis pour la marche à suivre pas à pas.
-
   # --- Frontend ---
   - type: web
     name: korintek-queue-frontend
