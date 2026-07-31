@@ -6,6 +6,7 @@ import Login from './pages/Login.jsx';
 import AuthCallback from './pages/AuthCallback.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Courses from './pages/Courses.jsx';
+import Users from './pages/Users.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 export default function App() {
@@ -33,6 +34,14 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
             <Courses />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+            <Users />
           </ProtectedRoute>
         }
       />
