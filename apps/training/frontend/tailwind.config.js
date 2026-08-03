@@ -5,10 +5,12 @@ export default {
     extend: {
       colors: {
         korintek: {
-          teal: '#00BAD2',
+          navy: '#0A1F2C',      // Primary Navy — règles projet KORINTEK LMS
+          teal: '#00BAD2',      // Primary Teal
+          gold: '#BF953F',      // Gold Accent
+          goldLight: '#DEBD6F',
+          bg: '#F8F9FA',        // Background officiel
           tealDark: '#00808F',
-          tealDarker: '#005B66',
-          tealLight: '#E3F8FA',
           tealLighter: '#F2FCFD',
           ink: '#0F172A',
         },
