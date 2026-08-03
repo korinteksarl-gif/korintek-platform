@@ -90,7 +90,7 @@ export default function Verify() {
                         </p>
                       )}
 
-                      
+                      <a
                         href={`${import.meta.env.VITE_API_URL}/certificates/${result.numero}/pdf`}
                         target="_blank" rel="noreferrer"
                         className="inline-flex items-center gap-1 mt-3 text-korintek-navy font-medium hover:underline"
