@@ -1,4 +1,5 @@
 const prisma = require('../config/db');
+const { logAction } = require('../utils/audit');
 
 const VALID_ROLES = ['PENDING', 'SUPER_ADMIN', 'ADMIN', 'TRAINER', 'FINANCE'];
 
@@ -24,6 +25,7 @@ async function updateRole(req, res, next) {
       return res.status(400).json({ error: 'Rôle invalide.' });
     }
     const user = await prisma.staffUser.update({ where: { id }, data: { role } });
+    await logAction(req.user?.id, 'USER_ROLE_UPDATED', { targetUserId: id, newRole: role });
     res.json({ user });
   } catch (err) {
     next(err);
@@ -36,6 +38,7 @@ async function toggleActive(req, res, next) {
     const { id } = req.params;
     const { active } = req.body;
     const user = await prisma.staffUser.update({ where: { id }, data: { active: Boolean(active) } });
+    await logAction(req.user?.id, active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED', { targetUserId: id });
     res.json({ user });
   } catch (err) {
     next(err);
@@ -50,6 +53,7 @@ async function remove(req, res, next) {
       return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' });
     }
     await prisma.staffUser.delete({ where: { id } });
+    await logAction(req.user?.id, 'USER_DELETED', { targetUserId: id });
     res.status(204).send();
   } catch (err) {
     next(err);
