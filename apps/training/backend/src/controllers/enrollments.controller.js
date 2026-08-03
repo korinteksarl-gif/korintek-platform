@@ -1,4 +1,13 @@
 const prisma = require('../config/db');
+const { logAction } = require('../utils/audit');
+
+// Validation légère des champs texte : longueur raisonnable, pas de contenu vide
+// après nettoyage — évite les entrées abusives ou malformées côté public.
+function sanitizeText(value, maxLength = 200) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, maxLength);
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function findOrCreateStudent({ nom, prenom, email, telephone }) {
   // Correspondance simple par email si fourni, sinon création systématique
@@ -12,16 +21,26 @@ async function findOrCreateStudent({ nom, prenom, email, telephone }) {
 // POST /api/v1/enrollments/public — inscription en ligne par l'étudiant lui-même
 async function createPublic(req, res, next) {
   try {
-    const { nom, prenom, email, telephone, courseId, sessionId } = req.body;
+    const nom = sanitizeText(req.body.nom, 100);
+    const prenom = sanitizeText(req.body.prenom, 100);
+    const emailRaw = sanitizeText(req.body.email, 150);
+    const telephone = sanitizeText(req.body.telephone, 30);
+    const courseId = sanitizeText(req.body.courseId, 60);
+    const sessionId = sanitizeText(req.body.sessionId, 60);
+
     if (!nom || !prenom || !courseId) {
       return res.status(400).json({ error: 'Nom, prénom et formation sont requis.' });
     }
+    if (emailRaw && !EMAIL_RE.test(emailRaw)) {
+      return res.status(400).json({ error: "Format d'email invalide." });
+    }
+
     const course = await prisma.course.findUnique({ where: { id: courseId } });
     if (!course || !course.active) {
       return res.status(404).json({ error: 'Formation introuvable ou indisponible.' });
     }
 
-    const student = await findOrCreateStudent({ nom, prenom, email, telephone });
+    const student = await findOrCreateStudent({ nom, prenom, email: emailRaw || null, telephone: telephone || null });
     const enrollment = await prisma.enrollment.create({
       data: {
         studentId: student.id,
@@ -31,6 +50,9 @@ async function createPublic(req, res, next) {
         amountDue: course.price,
       },
     });
+
+    await logAction(null, 'PUBLIC_ENROLLMENT_CREATED', { enrollmentId: enrollment.id, courseId });
+
     res.status(201).json({ enrollment });
   } catch (err) {
     next(err);
@@ -62,6 +84,9 @@ async function createStaff(req, res, next) {
         notes: notes || null,
       },
     });
+
+    await logAction(req.user?.id, 'STAFF_ENROLLMENT_CREATED', { enrollmentId: enrollment.id, courseId });
+
     res.status(201).json({ enrollment });
   } catch (err) {
     next(err);
@@ -103,6 +128,9 @@ async function update(req, res, next) {
       },
       include: { student: true, course: true, session: true, certificate: true },
     });
+
+    await logAction(req.user?.id, 'ENROLLMENT_UPDATED', { enrollmentId: id, statut, paymentMethod, amountPaid });
+
     res.json({ enrollment });
   } catch (err) {
     next(err);
@@ -113,6 +141,7 @@ async function remove(req, res, next) {
   try {
     const { id } = req.params;
     await prisma.enrollment.delete({ where: { id } });
+    await logAction(req.user?.id, 'ENROLLMENT_DELETED', { enrollmentId: id });
     res.status(204).send();
   } catch (err) {
     next(err);
