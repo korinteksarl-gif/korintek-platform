@@ -69,13 +69,11 @@ async function generateCertificatePdf({ studentName, courseTitle, durationHours,
   const mono = await pdfDoc.embedFont(StandardFonts.Courier);
   const serifBold = await pdfDoc.embedFont(fs.readFileSync(SERIF_PATH));
 
-  // --- Nom du candidat (centré, police serif) ---
   drawCentered(page, studentName, serifBold, 36, 465, rgb(0, 0.42, 0.5));
   drawCentered(page, 'a suivi avec succès la formation', regular, 15, 545);
   drawCentered(page, courseTitle, bold, 20, 592);
   drawCentered(page, `d'une durée de ${durationHours} heures`, italic, 14, 635);
 
-  // --- Signature (nom + titre, centrés dans la zone signature) ---
   const sigNameWidth = bold.widthOfTextAtSize(SIGNATORY_NAME, 16);
   const { x: sigX, y: sigNameY } = toPt(220 + (300 - sigNameWidth) / 2, 1000);
   page.drawText(SIGNATORY_NAME, { x: sigX, y: sigNameY, size: 16, font: bold, color: rgb(0.06, 0.09, 0.16) });
@@ -84,17 +82,14 @@ async function generateCertificatePdf({ studentName, courseTitle, durationHours,
   const { x: titleX, y: titleY } = toPt(220 + (300 - sigTitleWidth) / 2, 1022);
   page.drawText(SIGNATORY_TITLE, { x: titleX, y: titleY, size: 13, font: regular, color: rgb(0.4, 0.46, 0.55) });
 
-  // --- Date d'obtention ---
   const dateStr = new Date(completionDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const { x: dateX, y: dateY } = toPt(1754 - 520, 965);
   page.drawText(dateStr, { x: dateX + 10, y: dateY, size: 13, font: regular, color: rgb(0.06, 0.09, 0.16) });
 
-  // --- N° de certificat (bas de page) ---
   const numWidth = regular.widthOfTextAtSize(`N° ${numero}`, 13);
   const { x: numX, y: numY } = toPt(1754 - 60 - numWidth / SCALE, 45);
   page.drawText(`N° ${numero}`, { x: numX, y: numY, size: 13, font: regular, color: rgb(0.4, 0.46, 0.55) });
 
-  // --- QR code de vérification ---
   const verifyUrl = `${process.env.FRONTEND_URL}/verifier/${numero}`;
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 240, color: { dark: '#0F172A', light: '#FFFFFF' } });
   const qrBase64 = qrDataUrl.split(',')[1];
@@ -114,7 +109,6 @@ async function generateCertificatePdf({ studentName, courseTitle, durationHours,
 
   drawCentered(page, 'Scanner pour vérifier', italic, 8, qrBottomPx + 18, rgb(0.4, 0.46, 0.55));
 
-  // --- Empreinte SHA-256 (tronquée pour la lisibilité) ---
   const shortHash = `SHA-256 : ${hash.slice(0, 16)}…${hash.slice(-8)}`;
   drawCentered(page, shortHash, mono, 7, qrBottomPx + 34, rgb(0.55, 0.6, 0.68));
 
@@ -132,6 +126,12 @@ async function issue(req, res, next) {
 
     if (!enrollment) return res.status(404).json({ error: 'Inscription introuvable.' });
     if (enrollment.certificate) return res.status(409).json({ error: 'Une attestation existe déjà pour cette inscription.' });
+
+    // Blocage si le paiement n'est pas complet — protection backend, indépendante
+    // de l'état grisé du bouton côté frontend (empêche tout contournement via API directe).
+    if (enrollment.amountPaid < enrollment.amountDue) {
+      return res.status(402).json({ error: 'Le paiement n\'est pas complet. Impossible de délivrer l\'attestation.' });
+    }
 
     const numero = await generateCertificateNumber();
     const finalDate = completionDate ? new Date(completionDate) : new Date();
