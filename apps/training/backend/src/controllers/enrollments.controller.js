@@ -113,10 +113,18 @@ async function list(req, res, next) {
 }
 
 // PUT /api/v1/enrollments/:id — mise à jour statut / paiement / session
+// Restriction : seul SUPER_ADMIN peut modifier amountPaid (montant payé). Les
+// autres rôles autorisés (ADMIN, FINANCE, TRAINER) peuvent toujours modifier
+// statut, session et notes, mais pas contourner le contrôle de paiement.
 async function update(req, res, next) {
   try {
     const { id } = req.params;
     const { statut, paymentMethod, amountPaid, sessionId, notes } = req.body;
+
+    if (amountPaid !== undefined && req.user?.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Seul un SUPER_ADMIN peut modifier le montant payé.' });
+    }
+
     const enrollment = await prisma.enrollment.update({
       where: { id },
       data: {
