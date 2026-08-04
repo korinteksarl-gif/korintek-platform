@@ -54,6 +54,17 @@ enum EnrolledVia {
   STAFF  // saisie par l'équipe KORINTEK (accueil/agent)
 }
 
+enum PaymentMode {
+  HOURLY            // taux horaire
+  FLAT_PER_SESSION  // forfait fixe par session
+  PERCENTAGE        // pourcentage des revenus de la session
+}
+
+enum PaymentStatus {
+  PENDING   // à payer
+  PAID      // payé
+}
+
 model Course {
   id            String    @id @default(uuid())
   title         String
@@ -67,17 +78,37 @@ model Course {
   @@map("courses")
 }
 
+model Trainer {
+  id                 String        @id @default(uuid())
+  nom                String
+  prenom             String
+  email              String?
+  telephone          String?
+  defaultPaymentMode PaymentMode   @default(FLAT_PER_SESSION)
+  defaultRate        Int           @default(0) // FCFA/heure, FCFA/session, ou % selon le mode
+  active             Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  sessions           Session[]
+  @@map("trainers")
+}
+
 model Session {
-  id         String       @id @default(uuid())
-  courseId   String
-  course     Course       @relation(fields: [courseId], references: [id])
-  startDate  DateTime     @db.Date
-  endDate    DateTime?    @db.Date
-  formateur  String?
-  capacity   Int?
-  active     Boolean      @default(true)
-  createdAt  DateTime     @default(now())
-  enrollments Enrollment[]
+  id            String        @id @default(uuid())
+  courseId      String
+  course        Course        @relation(fields: [courseId], references: [id])
+  startDate     DateTime      @db.Date
+  endDate       DateTime?     @db.Date
+  formateur     String?       // conservé pour compatibilité avec les sessions existantes
+  trainerId     String?
+  trainer       Trainer?      @relation(fields: [trainerId], references: [id])
+  paymentMode   PaymentMode?  // si vide, utilise le mode par défaut du formateur
+  paymentAmount Int?          // montant calculé ou saisi manuellement (FCFA)
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentNotes  String?       @db.Text
+  capacity      Int?
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  enrollments   Enrollment[]
   @@map("sessions")
 }
 
