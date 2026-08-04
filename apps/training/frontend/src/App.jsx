@@ -6,9 +6,9 @@ import Login from './pages/Login.jsx';
 import AuthCallback from './pages/AuthCallback.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Courses from './pages/Courses.jsx';
+import Trainers from './pages/Trainers.jsx';
 import Users from './pages/Users.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
-
 export default function App() {
   return (
     <Routes>
@@ -17,7 +17,6 @@ export default function App() {
       <Route path="/inscription" element={<Enroll />} />
       <Route path="/verifier" element={<Verify />} />
       <Route path="/verifier/:numero" element={<Verify />} />
-
       {/* Staff */}
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
@@ -38,6 +37,14 @@ export default function App() {
         }
       />
       <Route
+        path="/formateurs"
+        element={
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'FINANCE']}>
+            <Trainers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/users"
         element={
           <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
@@ -45,7 +52,6 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-
       <Route path="/" element={<Navigate to="/catalogue" replace />} />
       <Route path="*" element={<Navigate to="/catalogue" replace />} />
     </Routes>
