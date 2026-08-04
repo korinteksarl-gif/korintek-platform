@@ -54,11 +54,9 @@ async function ensureHash(certificate) {
   return hash;
 }
 
-// Coordonnées calées sur le gabarit certificate_background.png (1754x1240px),
-// converties en points PDF. Le gabarit contient déjà les libellés statiques
-// ("a suivi avec succès la formation", "N° DE CERTIFICAT", etc.) — on ne
-// dessine ICI que les valeurs dynamiques, jamais les libellés eux-mêmes,
-// pour éviter tout doublon de texte.
+// Coordonnées mesurées précisément sur le gabarit certificate_background.png
+// (1754x1240px) actuellement déployé — ne pas modifier sans revérifier contre
+// le fond réel, ces deux éléments sont interdépendants.
 async function generateCertificatePdf({ studentName, courseTitle, durationHours, completionDate, numero, hash }) {
   const bgBytes = fs.readFileSync(BG_PATH);
   const pdfDoc = await PDFDocument.create();
@@ -74,47 +72,47 @@ async function generateCertificatePdf({ studentName, courseTitle, durationHours,
   const mono = await pdfDoc.embedFont(StandardFonts.Courier);
   const serifBold = await pdfDoc.embedFont(fs.readFileSync(SERIF_PATH));
 
-  // --- Nom du candidat (sur la 1ère ligne vide, px y=500 -> juste au-dessus) ---
-  drawCentered(page, studentName, serifBold, 32, 480, rgb(0, 0.42, 0.5));
+  // --- Nom du candidat (sur la 1ère ligne vide, y=536 -> juste au-dessus) ---
+  drawCentered(page, studentName, serifBold, 30, 516, rgb(0, 0.42, 0.5));
 
-  // --- Formation (sur la 2ème ligne vide, px y=635 -> juste au-dessus) ---
-  drawCentered(page, courseTitle, bold, 22, 615);
+  // --- Formation (sur la 2ème ligne vide, y=665 -> juste au-dessus) ---
+  drawCentered(page, courseTitle, bold, 20, 645);
 
-  // --- N° de certificat (à côté du libellé "N°", px x=300/y=765) ---
-  const { x: numX, y: numY } = toPt(320, 774);
-  page.drawText(numero, { x: numX, y: numY, size: 16, font: regular, color: rgb(0.06, 0.09, 0.16) });
+  // --- N° de certificat (à côté du libellé "N°", après x=258) ---
+  const { x: numX, y: numY } = toPt(300, 798);
+  page.drawText(numero, { x: numX, y: numY, size: 13, font: regular, color: rgb(0.06, 0.09, 0.16) });
 
-  // --- Date d'obtention (px x=615/y=778, sur la ligne) ---
+  // --- Date d'obtention (colonne 2, ligne x=614-813) ---
   const dateStr = new Date(completionDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const { x: dateX, y: dateY } = toPt(625, 774);
-  page.drawText(dateStr, { x: dateX, y: dateY, size: 14, font: regular, color: rgb(0.06, 0.09, 0.16) });
+  const { x: dateX, y: dateY } = toPt(625, 798);
+  page.drawText(dateStr, { x: dateX, y: dateY, size: 11, font: regular, color: rgb(0.06, 0.09, 0.16) });
 
-  // --- Durée (à côté de "Durée :", px x=960/y=765) ---
-  const { x: dureeX, y: dureeY } = toPt(1045, 774);
-  page.drawText(`${durationHours} heures`, { x: dureeX, y: dureeY, size: 16, font: regular, color: rgb(0.06, 0.09, 0.16) });
+  // --- Durée (après le libellé "Durée :", après x=1035) ---
+  const { x: dureeX, y: dureeY } = toPt(1055, 798);
+  page.drawText(`${durationHours} heures`, { x: dureeX, y: dureeY, size: 12, font: regular, color: rgb(0.06, 0.09, 0.16) });
 
-  // --- Période de formation (px x=1365/y=778, sur la ligne) ---
-  const { x: periodeX, y: periodeY } = toPt(1375, 774);
-  page.drawText(dateStr, { x: periodeX, y: periodeY, size: 13, font: regular, color: rgb(0.06, 0.09, 0.16) });
+  // --- Période de formation (colonne 4, ligne x=1342-1585) ---
+  const { x: periodeX, y: periodeY } = toPt(1352, 798);
+  page.drawText(dateStr, { x: periodeX, y: periodeY, size: 11, font: regular, color: rgb(0.06, 0.09, 0.16) });
 
-  // --- Signature (nom + titre, sur la ligne signature px x=220-580/y=905) ---
-  const sigNameWidth = bold.widthOfTextAtSize(SIGNATORY_NAME, 16);
-  const { x: sigX, y: sigNameY } = toPt(220 + (360 - sigNameWidth) / 2, 895);
-  page.drawText(SIGNATORY_NAME, { x: sigX, y: sigNameY, size: 16, font: bold, color: rgb(0.06, 0.09, 0.16) });
+  // --- Signature (nom + titre, ligne signature x=205-469, y=981) ---
+  const sigNameWidth = bold.widthOfTextAtSize(SIGNATORY_NAME, 15);
+  const { x: sigX, y: sigNameY } = toPt(205 + (264 - sigNameWidth) / 2, 958);
+  page.drawText(SIGNATORY_NAME, { x: sigX, y: sigNameY, size: 15, font: bold, color: rgb(0.06, 0.09, 0.16) });
 
-  const sigTitleWidth = regular.widthOfTextAtSize(SIGNATORY_TITLE, 12);
-  const { x: titleX, y: titleY } = toPt(220 + (360 - sigTitleWidth) / 2, 928);
-  page.drawText(SIGNATORY_TITLE, { x: titleX, y: titleY, size: 12, font: regular, color: rgb(0.4, 0.46, 0.55) });
+  const sigTitleWidth = regular.widthOfTextAtSize(SIGNATORY_TITLE, 11);
+  const { x: titleX, y: titleY } = toPt(205 + (264 - sigTitleWidth) / 2, 1004);
+  page.drawText(SIGNATORY_TITLE, { x: titleX, y: titleY, size: 11, font: regular, color: rgb(0.4, 0.46, 0.55) });
 
-  // --- QR code (dans le cadre vide prévu à droite, px x=1500-1650/y=820-970) ---
+  // --- QR code (dans le cadre en équerres, x=1452-1615/y=860-999) ---
   const verifyUrl = `${process.env.FRONTEND_URL}/verifier/${numero}`;
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 240, color: { dark: '#0F172A', light: '#FFFFFF' } });
   const qrBase64 = qrDataUrl.split(',')[1];
   const qrImage = await pdfDoc.embedPng(Buffer.from(qrBase64, 'base64'));
 
-  const qrSizePx = 150;
-  const qrLeftPx = 1500;
-  const qrTopPx = 820;
+  const qrSizePx = 135;
+  const qrLeftPx = 1465;
+  const qrTopPx = 862;
 
   page.drawImage(qrImage, {
     x: qrLeftPx * SCALE,
@@ -123,11 +121,11 @@ async function generateCertificatePdf({ studentName, courseTitle, durationHours,
     height: qrSizePx * SCALE,
   });
 
-  // --- Empreinte SHA-256 (sous le QR, tronquée pour la lisibilité) ---
+  // --- Empreinte SHA-256 (entre le QR et le texte "Scanner pour vérifier") ---
   const shortHash = `SHA-256 : ${hash.slice(0, 16)}…${hash.slice(-8)}`;
-  const hashWidth = mono.widthOfTextAtSize(shortHash, 7);
-  const { x: hashX, y: hashY } = toPt(qrLeftPx + qrSizePx / 2 - hashWidth / (2 * SCALE), qrTopPx + qrSizePx + 55);
-  page.drawText(shortHash, { x: hashX, y: hashY, size: 7, font: mono, color: rgb(0.55, 0.6, 0.68) });
+  const hashWidth = mono.widthOfTextAtSize(shortHash, 6.5);
+  const { x: hashX, y: hashY } = toPt(qrLeftPx + qrSizePx / 2 - hashWidth / (2 * SCALE), 1020);
+  page.drawText(shortHash, { x: hashX, y: hashY, size: 6.5, font: mono, color: rgb(0.55, 0.6, 0.68) });
 
   return pdfDoc.save();
 }
@@ -144,8 +142,6 @@ async function issue(req, res, next) {
     if (!enrollment) return res.status(404).json({ error: 'Inscription introuvable.' });
     if (enrollment.certificate) return res.status(409).json({ error: 'Une attestation existe déjà pour cette inscription.' });
 
-    // Blocage si le paiement n'est pas complet — protection backend, indépendante
-    // de l'état grisé du bouton côté frontend.
     if (enrollment.amountPaid < enrollment.amountDue) {
       return res.status(402).json({ error: "Le paiement n'est pas complet. Impossible de délivrer l'attestation." });
     }
