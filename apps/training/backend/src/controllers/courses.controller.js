@@ -117,4 +117,15 @@ async function updateSession(req, res, next) {
   }
 }
 
-module.exports = { listPublic, listAll, create, update, remove, createSession, updateSession };
+async function removeSession(req, res, next) {
+  try {
+    const { id } = req.params;
+    await prisma.session.delete({ where: { id } });
+    await logAction(req.user?.id, 'SESSION_DELETED', { sessionId: id });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listPublic, listAll, create, update, remove, createSession, updateSession, removeSession };
