@@ -30,7 +30,6 @@ model StaffUser {
   role         StaffRole @default(PENDING)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
-
   @@map("staff_users")
 }
 
@@ -65,7 +64,6 @@ model Course {
   createdAt     DateTime  @default(now())
   sessions      Session[]
   enrollments   Enrollment[]
-
   @@map("courses")
 }
 
@@ -80,7 +78,6 @@ model Session {
   active     Boolean      @default(true)
   createdAt  DateTime     @default(now())
   enrollments Enrollment[]
-
   @@map("sessions")
 }
 
@@ -92,7 +89,6 @@ model Student {
   telephone   String?
   createdAt   DateTime     @default(now())
   enrollments Enrollment[]
-
   @@map("students")
 }
 
@@ -113,7 +109,6 @@ model Enrollment {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   certificate   Certificate?
-
   @@map("enrollments")
 }
 
@@ -126,8 +121,8 @@ model Certificate {
   courseTitleSnapshot   String
   durationHoursSnapshot Int
   completionDate        DateTime   @db.Date
+  certificateHash       String?    @unique // empreinte SHA-256 — preuve d'intégrité anti-contrefaçon
   issuedAt              DateTime   @default(now())
-
   @@map("certificates")
 }
 
@@ -137,7 +132,6 @@ model AuditLog {
   action    String
   details   Json?
   createdAt DateTime @default(now())
-
   @@index([createdAt])
   @@map("training_audit_logs")
 }
