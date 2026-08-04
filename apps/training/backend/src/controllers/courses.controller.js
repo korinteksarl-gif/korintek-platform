@@ -19,7 +19,10 @@ async function listPublic(req, res, next) {
 async function listAll(req, res, next) {
   try {
     const courses = await prisma.course.findMany({
-      include: { sessions: true, _count: { select: { enrollments: true } } },
+      include: {
+        sessions: { include: { trainer: true }, orderBy: { startDate: 'asc' } },
+        _count: { select: { enrollments: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ courses });
@@ -78,7 +81,7 @@ async function remove(req, res, next) {
 async function createSession(req, res, next) {
   try {
     const { courseId } = req.params;
-    const { startDate, endDate, formateur, capacity } = req.body;
+    const { startDate, endDate, formateur, trainerId, capacity } = req.body;
     if (!startDate) return res.status(400).json({ error: 'La date de début est requise.' });
     const session = await prisma.session.create({
       data: {
@@ -86,8 +89,10 @@ async function createSession(req, res, next) {
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         formateur: formateur || null,
+        trainerId: trainerId || null,
         capacity: capacity ? Number(capacity) : null,
       },
+      include: { trainer: true },
     });
     await logAction(req.user?.id, 'SESSION_CREATED', { sessionId: session.id, courseId });
     res.status(201).json({ session });
@@ -99,16 +104,18 @@ async function createSession(req, res, next) {
 async function updateSession(req, res, next) {
   try {
     const { id } = req.params;
-    const { startDate, endDate, formateur, capacity, active } = req.body;
+    const { startDate, endDate, formateur, trainerId, capacity, active } = req.body;
     const session = await prisma.session.update({
       where: { id },
       data: {
         ...(startDate !== undefined && { startDate: new Date(startDate) }),
         ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
         ...(formateur !== undefined && { formateur }),
+        ...(trainerId !== undefined && { trainerId: trainerId || null }),
         ...(capacity !== undefined && { capacity: capacity ? Number(capacity) : null }),
         ...(active !== undefined && { active: Boolean(active) }),
       },
+      include: { trainer: true },
     });
     await logAction(req.user?.id, 'SESSION_UPDATED', { sessionId: id });
     res.json({ session });
