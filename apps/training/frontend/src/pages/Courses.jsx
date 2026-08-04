@@ -5,14 +5,19 @@ import Logo from '../components/Logo.jsx';
 
 export default function Courses() {
   const [courses, setCourses] = useState([]);
+  const [trainers, setTrainers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', durationHours: '', price: '' });
   const [sessionForms, setSessionForms] = useState({});
   const navigate = useNavigate();
 
   async function load() {
-    const { data } = await apiClient.get('/courses/admin');
-    setCourses(data.courses);
+    const [coursesRes, trainersRes] = await Promise.all([
+      apiClient.get('/courses/admin'),
+      apiClient.get('/trainers'),
+    ]);
+    setCourses(coursesRes.data.courses);
+    setTrainers(trainersRes.data.trainers.filter((t) => t.active));
   }
 
   useEffect(() => { load(); }, []);
@@ -51,6 +56,12 @@ export default function Courses() {
     return `Début : ${start} → Fin : ${end}`;
   }
 
+  function trainerLabel(s) {
+    if (s.trainer) return `Formateur : ${s.trainer.prenom} ${s.trainer.nom}`;
+    if (s.formateur) return `Formateur : ${s.formateur}`;
+    return 'Formateur non assigné';
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
@@ -58,7 +69,10 @@ export default function Courses() {
           <Logo size={36} showWordmark={false} />
           <h1 className="font-heading font-bold text-korintek-ink">Formations</h1>
         </div>
-        <button onClick={() => navigate('/dashboard')} className="text-sm text-korintek-tealDark hover:underline">← Inscriptions</button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/formateurs')} className="text-sm text-korintek-tealDark hover:underline">Formateurs</button>
+          <button onClick={() => navigate('/dashboard')} className="text-sm text-korintek-tealDark hover:underline">← Inscriptions</button>
+        </div>
       </header>
 
       <main className="p-6 max-w-4xl mx-auto space-y-6">
@@ -98,9 +112,12 @@ export default function Courses() {
                       <div key={s.id} className="flex items-center justify-between text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                         <div>
                           <span className="font-medium text-slate-700">{formatSessionDates(s)}</span>
-                          <span className="text-slate-400 ml-2">
-                            {s.formateur ? `Formateur : ${s.formateur}` : 'Formateur non assigné'}
-                          </span>
+                          <span className="text-slate-400 ml-2">{trainerLabel(s)}</span>
+                          {s.trainer && (
+                            <span className={`ml-2 font-medium rounded-full px-2 py-0.5 ${s.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {s.paymentStatus === 'PAID' ? 'Payé' : 'À payer'}
+                            </span>
+                          )}
                         </div>
                         <button onClick={() => removeSession(s.id)} className="text-red-500 hover:text-red-700 font-medium ml-3">
                           Supprimer
@@ -111,7 +128,7 @@ export default function Courses() {
                       <p className="text-xs text-slate-400 italic">Aucune session programmée.</p>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                     <div>
                       <label className="text-xs text-slate-400 block mb-1">Début</label>
                       <input
@@ -130,8 +147,19 @@ export default function Courses() {
                         className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full"
                       />
                     </div>
-                    <div className="md:col-span-1">
-                      <label className="text-xs text-slate-400 block mb-1">Formateur</label>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Formateur (annuaire)</label>
+                      <select
+                        value={sessionForms[c.id]?.trainerId || ''}
+                        onChange={(e) => setSessionForms({ ...sessionForms, [c.id]: { ...sessionForms[c.id], trainerId: e.target.value } })}
+                        className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full"
+                      >
+                        <option value="">Aucun / texte libre</option>
+                        {trainers.map((t) => <option key={t.id} value={t.id}>{t.prenom} {t.nom}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Ou nom libre</label>
                       <input
                         placeholder="Nom du formateur"
                         value={sessionForms[c.id]?.formateur || ''}
