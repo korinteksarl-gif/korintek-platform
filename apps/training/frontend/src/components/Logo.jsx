@@ -2,13 +2,19 @@ import { useNavigate } from 'react-router-dom';
 
 // Badge KORINTEK — utilise le vrai logo officiel (fichier public/logo-korintek.png),
 // affiché de façon cohérente sur tous les écrans de l'application.
-// Cliquable : ramène toujours à la page d'accueil du staff (/dashboard).
+// Cliquable : ramène à l'accueil approprié selon le contexte —
+// /dashboard si un membre du staff est connecté, /catalogue sinon (visiteur public).
 export default function Logo({ size = 40, showWordmark = true, dark = false }) {
   const navigate = useNavigate();
 
+  function goHome() {
+    const isStaffConnected = !!localStorage.getItem('korintek_training_token');
+    navigate(isStaffConnected ? '/dashboard' : '/catalogue');
+  }
+
   return (
     <button
-      onClick={() => navigate('/dashboard')}
+      onClick={goHome}
       className="flex items-center gap-2.5 cursor-pointer bg-transparent border-0 p-0"
       aria-label="Retour à l'accueil"
     >
