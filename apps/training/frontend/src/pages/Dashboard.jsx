@@ -25,8 +25,11 @@ export default function Dashboard() {
   const [courses, setCourses] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ nom: '', prenom: '', email: '', telephone: '', courseId: '', paymentMethod: '', amountPaid: '' });
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('korintek_training_user') || 'null');
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   async function load() {
     const [enrRes, courseRes] = await Promise.all([
@@ -64,6 +67,21 @@ export default function Dashboard() {
       load();
     } catch (err) {
       alert(err.response?.data?.error || 'Erreur lors de la délivrance.');
+    }
+  }
+
+  function startEditPayment(enrollment) {
+    setEditingPaymentId(enrollment.id);
+    setEditAmount(String(enrollment.amountPaid));
+  }
+
+  async function savePayment(id) {
+    try {
+      await apiClient.put(`/enrollments/${id}`, { amountPaid: Number(editAmount) });
+      setEditingPaymentId(null);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erreur lors de la mise à jour du paiement.');
     }
   }
 
@@ -135,35 +153,80 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {enrollments.map((e) => (
-                <tr key={e.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2">{e.student.prenom} {e.student.nom}</td>
-                  <td className="px-4 py-2">{e.course.title}</td>
-                  <td className="px-4 py-2 text-slate-500">
-                    {e.amountPaid.toLocaleString('fr-FR')} / {e.amountDue.toLocaleString('fr-FR')} FCFA
-                  </td>
-                  <td className="px-4 py-2">
-                    <select
-                      value={e.statut}
-                      onChange={(ev) => updateStatut(e.id, ev.target.value)}
-                      className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut]}`}
-                    >
-                      {Object.entries(STATUT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    {e.certificate ? (
-                      <a href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`} target="_blank" rel="noreferrer" className="text-korintek-tealDark hover:underline text-xs font-mono">
-                        {e.certificate.numero}
-                      </a>
-                    ) : (
-                      <button onClick={() => issueCertificate(e.id)} className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1">
-                        Délivrer
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {enrollments.map((e) => {
+                const paymentComplete = e.amountPaid >= e.amountDue;
+                const isEditingThisPayment = editingPaymentId === e.id;
+
+                return (
+                  <tr key={e.id} className="border-t border-slate-100">
+                    <td className="px-4 py-2">{e.student.prenom} {e.student.nom}</td>
+                    <td className="px-4 py-2">{e.course.title}</td>
+                    <td className="px-4 py-2 text-slate-500">
+                      {isEditingThisPayment ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            autoFocus
+                            value={editAmount}
+                            onChange={(ev) => setEditAmount(ev.target.value)}
+                            className="w-24 rounded border border-slate-300 px-2 py-1 text-xs"
+                          />
+                          <span className="text-xs">/ {e.amountDue.toLocaleString('fr-FR')} FCFA</span>
+                          <button onClick={() => savePayment(e.id)} className="text-xs text-korintek-tealDark font-medium ml-1">
+                            OK
+                          </button>
+                          <button onClick={() => setEditingPaymentId(null)} className="text-xs text-slate-400">
+                            Annuler
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={paymentComplete ? '' : 'text-amber-600 font-medium'}>
+                            {e.amountPaid.toLocaleString('fr-FR')} / {e.amountDue.toLocaleString('fr-FR')} FCFA
+                          </span>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => startEditPayment(e)}
+                              className="text-xs text-slate-400 hover:text-korintek-tealDark underline"
+                              title="Modifier le montant payé (SUPER_ADMIN)"
+                            >
+                              Modifier
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={e.statut}
+                        onChange={(ev) => updateStatut(e.id, ev.target.value)}
+                        className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut]}`}
+                      >
+                        {Object.entries(STATUT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2">
+                      {e.certificate ? (
+                        <a href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`} target="_blank" rel="noreferrer" className="text-korintek-tealDark hover:underline text-xs font-mono">
+                          {e.certificate.numero}
+                        </a>
+                      ) : paymentComplete ? (
+                        <button onClick={() => issueCertificate(e.id)} className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1">
+                          Délivrer
+                        </button>
+                      ) : (
+                        <button
+                          disabled
+                          title="Paiement incomplet — impossible de délivrer l'attestation"
+                          className="text-xs bg-slate-200 text-slate-400 rounded-full px-3 py-1 cursor-not-allowed"
+                        >
+                          Délivrer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {!enrollments.length && (
                 <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">Aucune inscription.</td></tr>
               )}
