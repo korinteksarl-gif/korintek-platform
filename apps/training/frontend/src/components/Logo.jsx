@@ -1,8 +1,17 @@
+import { useNavigate } from 'react-router-dom';
+
 // Badge KORINTEK — utilise le vrai logo officiel (fichier public/logo-korintek.png),
 // affiché de façon cohérente sur tous les écrans de l'application.
+// Cliquable : ramène toujours à la page d'accueil du staff (/dashboard).
 export default function Logo({ size = 40, showWordmark = true, dark = false }) {
+  const navigate = useNavigate();
+
   return (
-    <div className="flex items-center gap-2.5">
+    <button
+      onClick={() => navigate('/dashboard')}
+      className="flex items-center gap-2.5 cursor-pointer bg-transparent border-0 p-0"
+      aria-label="Retour à l'accueil"
+    >
       <img
         src="/logo-korintek.png"
         alt="KORINTEK"
@@ -12,7 +21,7 @@ export default function Logo({ size = 40, showWordmark = true, dark = false }) {
         className="rounded-full"
       />
       {showWordmark && (
-        <div className="leading-tight">
+        <div className="leading-tight text-left">
           <p className={`font-heading font-extrabold tracking-tight text-base ${dark ? 'text-white' : 'text-korintek-ink'}`}>
             KORINTEK
           </p>
@@ -21,6 +30,6 @@ export default function Logo({ size = 40, showWordmark = true, dark = false }) {
           </p>
         </div>
       )}
-    </div>
+    </button>
   );
 }
