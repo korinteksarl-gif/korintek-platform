@@ -1,0 +1,100 @@
+// KORINTEK CRM — Schéma de base de données
+// Suivi des prospects (formations/certifications) et des contacts B2B/partenaires,
+// du premier contact jusqu'à la conversion, avec journal d'interactions.
+// Réutilise la même identité KORINTEK ID (Microsoft Entra ID) que les autres modules
+// pour l'accès du personnel commercial.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  PENDING
+  SUPER_ADMIN
+  ADMIN
+  SALES
+}
+
+model StaffUser {
+  id        String    @id @default(uuid())
+  nom       String
+  prenom    String
+  email     String    @unique
+  azureId   String?   @unique
+  role      StaffRole @default(PENDING)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  contacts  Contact[]
+  @@map("staff_users")
+}
+
+enum ContactType {
+  PROSPECT_FORMATION // intéressé par une formation/certification
+  PARTENAIRE_B2B     // contact entreprise/partenariat
+}
+
+enum PipelineStage {
+  NOUVEAU
+  CONTACTE
+  PROPOSITION_ENVOYEE
+  NEGOCIATION
+  GAGNE
+  PERDU
+}
+
+enum InteractionType {
+  APPEL
+  EMAIL
+  REUNION
+  NOTE
+}
+
+model Contact {
+  id                   String        @id @default(uuid())
+  nom                  String
+  prenom               String?
+  entreprise           String?
+  email                String?
+  telephone            String?
+  type                 ContactType   @default(PROSPECT_FORMATION)
+  stage                PipelineStage @default(NOUVEAU)
+  source               String?       // ex: "Facebook Ads", "Bouche à oreille", "Site web"
+  notes                String?       @db.Text
+  assignedToId         String?
+  assignedTo           StaffUser?    @relation(fields: [assignedToId], references: [id])
+  // Lien léger vers le module Training une fois converti — juste une référence texte,
+  // jamais une vraie foreign key (bases séparées, voir incident du 30/07/2026).
+  trainingEnrollmentId String?
+  interactions         Interaction[]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  @@index([stage])
+  @@index([type])
+  @@map("contacts")
+}
+
+model Interaction {
+  id          String           @id @default(uuid())
+  contactId   String
+  contact     Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type        InteractionType  @default(NOTE)
+  notes       String           @db.Text
+  createdById String?
+  createdAt   DateTime         @default(now())
+  @@map("interactions")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+  @@map("crm_audit_logs")
+}

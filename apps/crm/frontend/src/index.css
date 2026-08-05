@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply font-sans text-slate-800; }
+h1, h2, h3, .font-heading { font-family: 'Manrope', -apple-system, sans-serif; }
+
+/* Fond de page avec filigrane discret du logo KORINTEK — très petit, très pâle */
+.page-bg {
+  position: relative;
+  background-color: #f8fafc;
+}
+
+.page-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/logo-korintek.png');
+  background-repeat: no-repeat;
+  background-position: center 65%;
+  background-size: 280px;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page-bg > * {
+  position: relative;
+  z-index: 1;
+}
