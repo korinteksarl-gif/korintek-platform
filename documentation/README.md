@@ -1,258 +1,137 @@
-# KORINTEK BUSINESS PORTAL
-### Module actif : KORINTEK QUEUE MANAGER
+KORINTEK BUSINESS PORTAL
+Modules actifs : KORINTEK QUEUE MANAGER + KORINTEK TRAINING
+Portail numérique KORINTEK regroupant la gestion de file d'attente du centre d'examen (Pearson VUE / PSI) et le module de formation (inscriptions, sessions, formateurs, attestations). Feuille de route du portail complet : Queue Manager → Training → Billing → CRM.
 
-Gestion numérique de la file d'attente des candidats au centre d'examen KORINTEK
-(Pearson VUE / PSI). Première brique du futur portail KORINTEK (Queue Manager →
-Billing → CRM → Training).
-
----
-
-## 1. Architecture
-
-```
+1. Architecture
 korintek-platform/
 ├── apps/
-│   └── queue-manager/
+│   ├── queue-manager/
+│   │   ├── backend/    Node.js + Express + Prisma + PostgreSQL
+│   │   └── frontend/   React + Vite + Tailwind CSS
+│   └── training/
 │       ├── backend/    Node.js + Express + Prisma + PostgreSQL
 │       └── frontend/   React + Vite + Tailwind CSS
 ├── packages/
-│   ├── ui-components/  Design system partagé (à enrichir)
-│   ├── authentication/ Vérification JWT KORINTEK ID partagée
+│   ├── ui-components/  Design system partagé (non utilisé pour l'instant)
+│   ├── authentication/ Vérification JWT KORINTEK ID — PAS ENCORE MUTUALISÉE (voir note ci-dessous)
 │   ├── database/       Conventions Prisma communes
 │   └── shared-utils/   Fonctions utilitaires communes
 ├── documentation/
 └── deployment/
     └── render.yaml
-```
 
-Chaque `app` est déployée comme un service Render indépendant. Les `packages/` sont
-partagés par import relatif et deviendront un vrai design system npm interne lorsque
-le nombre de modules le justifiera.
+Chaque app est déployée comme des services Render indépendants (backend + frontend séparés par module). Chaque module (queue-manager, training) dispose de sa propre base Neon.tech dédiée — voir incident du 30/07/2026 documenté dans documentation/, qui a motivé cette séparation stricte.
 
-## 2. Authentification — Microsoft Entra ID (Office 365 SSO)
+⚠️ Note sur packages/ : ce dossier est un objectif de mutualisation, pas encore une réalité. À ce jour, les trois projets KORINTEK (Queue Manager, Training, et facturation.korintek.com) maintiennent chacun leur propre code d'authentification dupliqué (middleware/auth.js indépendant dans chaque backend). Aucun n'importe depuis packages/authentication/. Une factorisation réelle vers packages/ reste à faire — ne pas supposer que modifier packages/authentication/ affecte les modules en production tant que cette migration n'a pas été effectuée explicitement.
 
-Le Queue Manager utilise le même mécanisme que facturation.korintek.com : connexion
-via le bouton "Se connecter avec Microsoft 365", pas de mot de passe local à gérer.
+2. Authentification — Microsoft Entra ID (Office 365 SSO)
+Les trois projets (Queue Manager, Training, Facturation) utilisent le même mécanisme : connexion via le bouton "Se connecter avec Microsoft 365", pas de mot de passe local à gérer au quotidien — mais chacun via sa propre implémentation dupliquée du middleware d'authentification (voir note ci-dessus).
 
-**App registration réutilisée** : "KORINTEK Facturation" dans le portail Azure
-(Client ID `dca354c3-b920-41af-aa90-abf4a31969d4`, Tenant `9cdff590-bed7-4a7a-a6c4-6aadd7edf896`).
+App registration réutilisée : "KORINTEK Facturation" dans le portail Azure (Client ID dca354c3-b920-41af-aa90-abf4a31969d4, Tenant 9cdff590-bed7-4a7a-a6c4-6aadd7edf896) — partagée par les trois projets.
 
-**Étape obligatoire côté Azure avant le premier test** : dans cette app registration →
-**Authentication** → **Redirect URIs** → ajouter :
-```
+Étape obligatoire côté Azure avant le premier test d'un nouveau module : dans cette app registration → Authentication → Redirect URIs → ajouter l'URL de callback du backend concerné, par exemple :
+
 https://korintek-queue-api.onrender.com/api/v1/auth/microsoft/callback
-```
-(remplacer par l'URL réelle du backend si différente, ou par `https://api.queue.korintek.com/...`
-si un domaine personnalisé est configuré plus tard).
+https://korintek-training-api.onrender.com/api/v1/auth/microsoft/callback
 
-**Client Secret** : si l'app registration n'a pas déjà un secret valide et non expiré,
-en créer un nouveau (**Certificates & secrets** → **New client secret**) et le renseigner
-dans `AZURE_CLIENT_SECRET` sur Render (jamais dans le repo Git).
+Client Secret : partagé entre les trois projets, renseigné dans AZURE_CLIENT_SECRET sur Render pour chaque service séparément (jamais dans le repo Git).
 
-**Attribution des rôles** : un compte Office 365 qui se connecte pour la première fois
-est créé automatiquement avec le rôle `PENDING` (aucun accès). Un `SUPER_ADMIN` doit
-ensuite lui attribuer un rôle réel via l'écran **"Utilisateurs"** (visible dans le
-Dashboard, lien en haut à droite pour les SUPER_ADMIN). Voir section 2 "Rôles KORINTEK ID"
-ci-dessous pour la liste des rôles disponibles.
+Attribution des rôles : un compte Office 365 qui se connecte pour la première fois est créé automatiquement avec le rôle PENDING (aucun accès), dans le module concerné. Un SUPER_ADMIN de ce module doit ensuite lui attribuer un rôle réel via l'écran "Utilisateurs". Les rôles sont indépendants d'un module à l'autre (un compte peut être SUPER_ADMIN sur Training et PENDING sur Queue Manager, par exemple) — chaque module a sa propre table de rôles, sans partage.
 
-Note : l'ancien login par email/mot de passe (`POST /api/v1/auth/login`) reste actif
-côté backend pour compatibilité (utile par ex. pour un compte de secours local), mais
-n'est plus exposé dans l'interface — celle-ci ne propose que le SSO Microsoft.
+Compte de secours local : chaque module conserve un compte administrateur local (email/mot de passe, hors SSO), créé au premier déploiement via le script de seed — utile en cas de panne SSO.
 
-## 3. Rôles KORINTEK ID
+3. Rôles KORINTEK ID
 
-| Rôle | Accès |
-|---|---|
-| PENDING | Aucun — compte créé automatiquement via SSO, en attente d'attribution par un SUPER_ADMIN |
-| SUPER_ADMIN | Tout, y compris suppression, audit et gestion des utilisateurs |
-| ADMIN | Gestion candidats, file, import, audit |
-| RECEPTION | Ajout/modification candidats, import, appel de la file |
-| EXAM_CENTER_AGENT | Mode agent d'accueil (appeler/terminer/absent) uniquement |
-| FINANCE | Lecture dashboard (préparation module Billing) |
-| TRAINER | Réservé aux futurs modules (Training) |
+Queue Manager
+Rôle	Accès
+PENDING	Aucun — en attente d'attribution par un SUPER_ADMIN
+SUPER_ADMIN	Tout, y compris suppression, audit et gestion des utilisateurs
+ADMIN	Gestion candidats, file, import, audit
+RECEPTION	Ajout/modification candidats, import, appel de la file
+EXAM_CENTER_AGENT	Mode agent d'accueil (appeler/terminer/absent) uniquement
+FINANCE	Lecture dashboard
+TRAINER	Réservé (non utilisé sur ce module)
 
-## 3. Installation locale
+Training
+Rôle	Accès
+PENDING	Aucun — en attente d'attribution par un SUPER_ADMIN
+SUPER_ADMIN	Tout, y compris gestion des utilisateurs, modification des montants payés, formateurs
+ADMIN	Gestion formations, sessions, inscriptions, délivrance d'attestations
+TRAINER	Accès en lecture aux inscriptions (dashboard)
+FINANCE	Lecture inscriptions, gestion des paiements formateurs
 
+4. Installation locale
 Prérequis : Node.js 20+, PostgreSQL 14+ (local ou distant), npm.
 
-### Backend
-
-```bash
-cd apps/queue-manager/backend
+Backend (exemple pour un module, remplacer <module> par queue-manager ou training)
+cd apps/<module>/backend
 cp .env.example .env
 # Renseigner DATABASE_URL, JWT_SECRET, SEED_ADMIN_* dans .env
 npm install
 npm run prisma:migrate:dev   # crée les tables
 npm run prisma:seed          # crée le compte administrateur initial
-npm run dev                  # démarre l'API sur http://localhost:4000
-```
+npm run dev                  # démarre l'API en local
 
-### Frontend
-
-```bash
-cd apps/queue-manager/frontend
+Frontend
+cd apps/<module>/frontend
 cp .env.example .env
 npm install
-npm run dev                  # démarre l'interface sur http://localhost:5173
-```
+npm run dev                  # démarre l'interface en local
 
-Interfaces disponibles en local :
-- `http://localhost:5173/login` — connexion
-- `http://localhost:5173/dashboard` — tableau de bord admin/réception
-- `http://localhost:5173/agent` — mode agent d'accueil (tablette)
-- `http://localhost:5173/display` — écran public salle d'attente (à ouvrir sur la TV)
+5. Comptes administrateurs initiaux
+Créés par npm run prisma:seed à partir des variables SEED_ADMIN_EMAIL et SEED_ADMIN_PASSWORD, propres à chaque module. Changer le mot de passe dès la première connexion (le changement self-service n'est pas encore implémenté — recréer l'utilisateur via SQL Editor Neon ou Prisma Studio en attendant).
 
-## 4. Compte administrateur initial
+6. Déploiement — 100% gratuit, sans date d'expiration
+Chaque module (queue-manager, training) est déployé avec sa propre base Neon.tech dédiée — ne jamais partager une base entre deux modules (voir incident du 30/07/2026 : un déploiement Training avait accidentellement supprimé les tables de Queue Manager via une base partagée et un flag --accept-data-loss ; les deux causes ont été corrigées définitivement).
 
-Créé par `npm run prisma:seed` à partir des variables `SEED_ADMIN_EMAIL` et
-`SEED_ADMIN_PASSWORD` du fichier `.env`. **Changer le mot de passe dès la première
-connexion** (le changement de mot de passe self-service n'est pas encore implémenté
-en V1 — le SUPER_ADMIN peut recréer un utilisateur via Prisma Studio en attendant).
+6.1 Garder chaque backend éveillé (gratuit, recommandé)
+Le plan gratuit Render met chaque backend en veille après 15 min sans requête. Pour chacun (queue-manager-api, training-api), configurer un ping via cron-job.org vers son endpoint /health, toutes les 10 minutes, limité aux heures d'ouverture.
 
-## 5. API — endpoints principaux
+6.2 Limites à connaître sur le long terme (gratuit)
+Composant	Limite du plan gratuit
+Neon.tech (par base)	0.5 GB de stockage par projet, pas de date d'expiration
+Render backend (par service)	750h/mois offertes, veille après 15 min sans ping
+Render frontend statique	Aucune limite significative, pas de veille
+Render domaines personnalisés	2 domaines inclus par workspace (voir section 9 — impact sur le nommage des modules)
 
-```
-POST   /api/v1/auth/login
-GET    /api/v1/auth/me
+7. Gestion de la base de données
+Migrations : npx prisma migrate dev (local) / npx prisma db push (prod, automatique au build Render, sans --accept-data-loss).
+Inspection visuelle : npx prisma studio (local) ou SQL Editor Neon (prod).
+Sauvegarde : export manuel (pg_dump) recommandé avant toute opération sensible sur le plan gratuit.
 
-GET    /api/v1/candidates?date=YYYY-MM-DD&statut=&search=
-GET    /api/v1/candidates/stats?date=YYYY-MM-DD
-POST   /api/v1/candidates
-PUT    /api/v1/candidates/:id
-DELETE /api/v1/candidates/:id
+8. Points d'attention avant mise en production
+L'écran /display du Queue Manager est intentionnellement public (pas de JWT requis) : ne jamais y exposer d'informations autres que numéro/nom/examen.
+Prévoir la rotation de JWT_SECRET uniquement lors d'une fenêtre de maintenance (invalide toutes les sessions actives du module concerné, indépendamment des autres).
+Le logo et les assets graphiques (certificats, sceaux) doivent toujours être les fichiers officiels KORINTEK — jamais de reconstitution par génération d'image IA sur les documents officiels.
+La mutualisation via packages/ (authentification, design system) reste un chantier futur — actuellement, toute correction de sécurité ou de bug d'authentification doit être répliquée manuellement dans chacun des trois projets.
 
-GET    /api/v1/queue/current        (public, sans authentification — pour /display)
-POST   /api/v1/queue/next
-POST   /api/v1/queue/:id/complete
-POST   /api/v1/queue/:id/absent
+9. État des modules et stratégie de nommage DNS
 
-POST   /api/v1/import/candidates    (multipart/form-data, champs "file" + "datePassage")
+Module	URL actuelle	Statut
+Queue Manager	queue.korintek.com	En production (domaine personnalisé Render)
+Training	korintek-training-frontend.onrender.com	En production — DNS training.korintek.com volontairement différé (voir note ci-dessous)
+Facturation	facturation.korintek.com	En production (domaine personnalisé Render, stack séparée FastAPI/Python, hors de ce monorepo apps/)
+CRM	crm.korintek.com	Non démarré
+Portail principal	app.korintek.com	Non démarré
 
-GET    /api/v1/audit?limit=100      (ADMIN / SUPER_ADMIN uniquement)
-```
+⚠️ Contrainte identifiée (04/08/2026) : le plan Render Hobby (gratuit) inclut seulement 2 domaines personnalisés par workspace. Queue Manager et Facturation utilisent déjà ces 2 slots. Ajouter un 3e domaine personnalisé (ex: training.korintek.com) coûte 0,25 $/mois — montant négligeable, mais volontairement évité pour l'instant en attendant la décision d'architecture ci-dessous.
 
-## 6. Déploiement — 100% gratuit, sans date d'expiration
+Décision d'architecture retenue pour le portail unifié (app.korintek.com) :
+Plutôt que d'attribuer un sous-domaine personnalisé Render à chaque module (ce qui consommerait un slot gratuit par module et redeviendrait limitant dès le 3e module), la cible est de faire de app.korintek.com le seul domaine personnalisé nécessaire à terme, avec les modules exposés en interne via des chemins plutôt que des sous-domaines séparés, par exemple :
 
-**Pourquoi Neon.tech pour la base de données et pas Render Postgres ?**
-Render Postgres gratuit expire 30 jours après création (données supprimées 14 jours
-après, sans grâce possible). Neon.tech offre un tier gratuit **permanent**, sans carte
-bancaire — c'est déjà la solution utilisée pour `facturation.korintek.com`. On la
-réutilise ici pour ne jamais perdre les données des candidats.
+app.korintek.com/queue        → reverse proxy vers korintek-queue-frontend.onrender.com
+app.korintek.com/training     → reverse proxy vers korintek-training-frontend.onrender.com
+app.korintek.com/facturation  → reverse proxy vers le service facturation
 
-### 6.1 Créer la base sur Neon.tech
+Dans ce scénario, queue.korintek.com et facturation.korintek.com pourraient être conservés comme redirections simples vers app.korintek.com/..., libérant ainsi la logique de domaines dédiés par module. Un seul domaine personnalisé (app.korintek.com) suffirait alors pour l'ensemble du portail, restant confortablement dans les 2 slots gratuits de Render.
 
-1. Va sur [neon.tech](https://neon.tech) → connecte-toi (ou crée un compte gratuit).
-2. **New Project** → nomme-le `korintek-queue` → choisis une région proche (Europe).
-3. Neon affiche une **connection string** du type
-   `postgresql://user:password@ep-xxxx.eu-central-1.aws.neon.tech/korintek_queue?sslmode=require`
-   → copie-la, tu en auras besoin à l'étape 6.3.
+Prérequis technique avant d'attaquer ce chantier : mise en place d'une couche de routage/reverse proxy (Nginx, Caddy, ou équivalent Render) devant les services actuels. À traiter en parallèle de la mutualisation de packages/authentication/ (section 1), les deux chantiers étant liés architecturalement (un portail unifié bénéficie naturellement d'une authentification mutualisée).
 
-### 6.2 Déployer sur Render
+En attendant cette consolidation : Training reste sur son URL .onrender.com par défaut, sans coût, sans perte de fonctionnalité.
 
-1. Pousse ce repository sur GitHub (voir section upload plus haut si pas de Git local).
-2. Sur Render : **New → Blueprint**, sélectionne le repository. Render lit
-   `deployment/render.yaml` et propose de créer automatiquement :
-   - le service backend `korintek-queue-api` (build + migrations Prisma automatiques),
-   - le service frontend statique `korintek-queue-frontend`.
-3. Clique **Apply** / **Create**.
-
-### 6.3 Renseigner les variables manquantes
-
-Sur le service `korintek-queue-api` → onglet **Environment** :
-- `DATABASE_URL` → colle la connection string Neon copiée à l'étape 6.1.
-- `SEED_ADMIN_PASSWORD` → renseigne un mot de passe fort pour le compte administrateur.
-→ **Save Changes** (redéploiement automatique).
-
-### 6.4 Créer le compte administrateur
-
-Service `korintek-queue-api` → onglet **Shell** → tape :
-```bash
-npm run prisma:seed
-```
-
-### 6.5 Connecter le frontend au backend
-
-Copie l'URL réelle du service `korintek-queue-api` (visible en haut de sa page), puis
-sur le service `korintek-queue-frontend` → **Environment** → renseigne `VITE_API_URL`
-avec `https://<url-du-backend>/api/v1` → **Save Changes**.
-
-### 6.6 Garder le backend éveillé (gratuit, optionnel mais recommandé)
-
-Le plan gratuit Render met le backend en veille après 15 min sans requête. Sans rien
-faire, le premier candidat de la matinée subit un délai de 30-60 secondes le temps
-que l'API se réveille. Pour l'éviter, sans dépenser un centime :
-
-1. Va sur [cron-job.org](https://cron-job.org) → crée un compte gratuit.
-2. **Create cronjob** → URL : `https://<url-du-backend>/health` → intervalle : toutes
-   les 10 minutes → limite si possible la plage horaire aux heures d'ouverture du
-   centre d'examen (ex: 7h-18h) pour rester large et ne pas gaspiller les 750h/mois
-   offertes par Render.
-3. Le endpoint `/health` existe déjà dans le backend, aucune modification de code requise.
-
-### 6.7 Limites à connaître sur le long terme (gratuit)
-
-| Composant | Limite du plan gratuit |
-|---|---|
-| Neon.tech (base) | 0.5 GB de stockage — largement suffisant pour un centre d'examen, pas de date d'expiration |
-| Render backend | 750h/mois offertes (un seul service tourne largement dans cette limite), veille après 15 min sans ping |
-| Render frontend (statique) | Aucune limite significative, pas de veille |
-
-Aucune carte bancaire n'est requise pour aucun des trois. Si le volume de candidats
-grandit fortement (plusieurs centres, gros trafic), il sera temps d'évaluer un
-upgrade payant à ce moment-là — pas avant.
-
-### Configuration DNS recommandée
-
-| Enregistrement | Cible |
-|---|---|
-| `queue.korintek.com` | CNAME vers le service frontend Render |
-| `api.queue.korintek.com` | CNAME vers le service backend Render |
-
-(Alternative sans sous-domaine dédié : servir le frontend sur `korintek.com/queue`
-via un reverse proxy — à valider selon l'hébergement actuel de korintek.com.)
-
-## 7. Gestion de la base de données
-
-- **Migrations** : `npx prisma migrate dev` (local) / `npx prisma migrate deploy` (prod, automatique au build Render).
-- **Inspection visuelle** : `npx prisma studio`.
-- **Sauvegarde** : Render fournit des sauvegardes automatiques quotidiennes sur les plans
-  payants PostgreSQL ; sur le plan gratuit, prévoir un export manuel (`pg_dump`) avant
-  toute opération sensible.
-
-## 8. Commandes Git recommandées
-
-```bash
-git init
-git add .
-git commit -m "Initial project structure"
-git commit -m "Database setup"
-git commit -m "Authentication"
-git commit -m "Queue Manager features"
-git commit -m "UI implementation"
-git commit -m "Deployment ready"
-git remote add origin <url-du-repo>
-git push -u origin main
-```
-
-## 9. Points d'attention avant mise en production
-
-- Le compte agent d'accueil (`EXAM_CENTER_AGENT`) doit être créé manuellement via
-  Prisma Studio en V1 (pas encore d'écran "Gestion des utilisateurs" — à prévoir en V1.1).
-- L'écran `/display` est intentionnellement public (pas de JWT requis) car il tourne sur
-  une TV en salle d'attente : ne jamais y exposer d'informations autres que numéro/nom/examen.
-- Le son de notification embarqué est un signal minimal ; le remplacer par un fichier audio
-  de qualité (`public/notification.mp3`) avant mise en salle.
-- Prévoir la rotation de `JWT_SECRET` uniquement lors d'une fenêtre de maintenance
-  (invalide toutes les sessions actives).
-
-## 10. Préparation des futurs modules
-
-| Module | URL prévue | Statut |
-|---|---|---|
-| Billing | `billing.korintek.com` | Non démarré — voir `packages/database/README.md` pour la décision base partagée/séparée |
-| CRM | `crm.korintek.com` | Non démarré |
-| Training | `training.korintek.com` | Non démarré |
-| Portail principal | `app.korintek.com` | Non démarré — agrégera les modules une fois 2+ modules en production |
-
-Le modèle `User` / KORINTEK ID et le middleware `authenticate` sont déjà conçus pour être
-réutilisés tels quels (voir `packages/authentication/verifyToken.js`).
+10. Chantiers identifiés (non priorisés)
+- Mutualisation réelle de packages/authentication/ entre les 3 projets
+- Enrichissement de packages/ui-components/ (design system partagé)
+- Reverse proxy / gateway pour app.korintek.com (voir section 9)
+- Sauvegarde automatisée des bases Neon (actuellement manuelle)
+- Training : capacité/places restantes sur les sessions, édition de session existante, édition de formation après création, recherche/filtre sur les inscriptions, export Excel, tableau de bord (revenus, taux de remplissage, attestations/mois), rappels automatiques par email avant le début d'une session
