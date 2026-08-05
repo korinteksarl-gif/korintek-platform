@@ -4,3 +4,15 @@
 
 body { @apply font-sans text-slate-800; }
 h1, h2, h3, .font-heading { font-family: 'Manrope', -apple-system, sans-serif; }
+
+/* Fond de page avec filigrane discret du logo KORINTEK, teinte teal très légère */
+.page-bg {
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(0, 186, 210, 0.05), transparent 60%),
+    url('/logo-korintek.png');
+  background-repeat: no-repeat;
+  background-position: center 55%;
+  background-size: 55%;
+  background-attachment: fixed;
+}
