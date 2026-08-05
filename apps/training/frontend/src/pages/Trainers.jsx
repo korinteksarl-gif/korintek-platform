@@ -71,7 +71,7 @@ export default function Trainers() {
   }, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen page-bg">
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Logo size={36} showWordmark={false} />
