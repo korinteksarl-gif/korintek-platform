@@ -1,0 +1,93 @@
+// KORINTEK COMPTABILITÉ — Schéma de base de données
+// Comptabilité en partie double : chaque écriture équilibre un total de débits
+// et un total de crédits égaux, sur un plan comptable inspiré du référentiel
+// OHADA (norme comptable en vigueur en zone UEMOA/Togo) — à ajuster avec votre
+// expert-comptable pour une conformité fiscale complète.
+// Les rapports (grand livre, balance, bilan) sont TOUJOURS calculés à la volée
+// à partir des écritures, jamais stockés en dur, pour garantir leur exactitude.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  PENDING
+  SUPER_ADMIN
+  ADMIN
+  COMPTABLE
+}
+
+model StaffUser {
+  id            String         @id @default(uuid())
+  nom           String
+  prenom        String
+  email         String         @unique
+  azureId       String?        @unique
+  role          StaffRole      @default(PENDING)
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  journalEntries JournalEntry[]
+  @@map("staff_users")
+}
+
+enum AccountType {
+  ACTIF
+  PASSIF
+  CAPITAUX_PROPRES
+  PRODUIT
+  CHARGE
+}
+
+model Account {
+  id          String        @id @default(uuid())
+  code        String        @unique // ex: "512000" (Banque), inspiré OHADA
+  name        String
+  type        AccountType
+  description String?
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  lines       JournalLine[]
+  @@index([type])
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id          String        @id @default(uuid())
+  reference   String        @unique // ex: "EC-2026-000001", généré automatiquement
+  date        DateTime      @db.Date
+  description String
+  createdById String?
+  createdBy   StaffUser?    @relation(fields: [createdById], references: [id])
+  lines       JournalLine[]
+  createdAt   DateTime      @default(now())
+  @@index([date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id])
+  debit          Int          @default(0) // FCFA, toujours positif ou nul
+  credit         Int          @default(0) // FCFA, toujours positif ou nul
+  label          String?      // précision optionnelle propre à cette ligne
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+  @@map("compta_audit_logs")
+}

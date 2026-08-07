@@ -1,0 +1,62 @@
+# KORINTEK COMPTABILITÉ — Configuration de déploiement Render.com
+#
+# CHOIX BASE DE DONNÉES : Neon.tech, projet DÉDIÉ à la comptabilité (jamais
+# partagé avec un autre module — voir incident du 30/07/2026 dans le README principal).
+#
+# Étapes manuelles avant le premier déploiement :
+# 1. Créer un projet Neon.tech nommé "korintek-comptabilite" (organisation Korintek)
+# 2. Copier la connection string (pooled) fournie par Neon
+# 3. La coller dans DATABASE_URL du service korintek-compta-api ci-dessous,
+#    directement dans le Dashboard Render (jamais dans Git — sync: false)
+# 4. Ajouter l'URL de callback dans l'app registration Azure "KORINTEK Facturation" :
+#    Authentication → Redirect URIs → https://korintek-compta-api.onrender.com/api/v1/auth/microsoft/callback
+# 5. Copier apps/training/frontend/public/logo-korintek.png et favicon.png vers
+#    apps/comptabilite/frontend/public/ (mêmes fichiers officiels, jamais de reconstitution IA)
+
+services:
+  # --- Backend API ---
+  - type: web
+    name: korintek-compta-api
+    runtime: node
+    plan: free
+    rootDir: apps/comptabilite/backend
+    buildCommand: npm install && npx prisma generate && npx prisma db push && node prisma/seed.js
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: AZURE_CLIENT_ID
+        value: dca354c3-b920-41af-aa90-abf4a31969d4
+      - key: AZURE_TENANT_ID
+        value: 9cdff590-bed7-4a7a-a6c4-6aadd7edf896
+      - key: AZURE_CLIENT_SECRET
+        sync: false
+      - key: AZURE_REDIRECT_URI
+        value: https://korintek-compta-api.onrender.com/api/v1/auth/microsoft/callback
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://korintek-compta-frontend.onrender.com
+      - key: SEED_ADMIN_EMAIL
+        value: admin@korintek.com
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+
+  # --- Frontend ---
+  - type: web
+    name: korintek-compta-frontend
+    runtime: static
+    rootDir: apps/comptabilite/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://korintek-compta-api.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
