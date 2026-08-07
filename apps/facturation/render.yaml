@@ -1,8 +1,9 @@
 services:
   - type: web
-    name: korintek-facturation
+    name: korintek-facturation-v2
     runtime: python
     plan: free
+    rootDir: apps/facturation
     buildCommand: "pip install -r requirements.txt"
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
