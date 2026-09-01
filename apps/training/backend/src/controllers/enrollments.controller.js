@@ -1,10 +1,7 @@
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
 
-// ============================================================
-// UTILITAIRES
-// ============================================================
-
+// Validation légère des champs texte
 function sanitizeText(value, maxLength = 200) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
@@ -13,6 +10,7 @@ function sanitizeText(value, maxLength = 200) {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function findOrCreateStudent({ nom, prenom, email, telephone }) {
+  // Correspondance simple par email si fourni
   if (email) {
     const existing = await prisma.student.findFirst({
       where: { email },
@@ -31,11 +29,7 @@ async function findOrCreateStudent({ nom, prenom, email, telephone }) {
   });
 }
 
-// ============================================================
-// INSCRIPTION PUBLIQUE
 // POST /api/v1/enrollments/public
-// ============================================================
-
 async function createPublic(req, res, next) {
   try {
     const nom = sanitizeText(req.body.nom, 100);
@@ -84,10 +78,14 @@ async function createPublic(req, res, next) {
       },
     });
 
-    await logAction(null, 'PUBLIC_ENROLLMENT_CREATED', {
-      enrollmentId: enrollment.id,
-      courseId,
-    });
+    await logAction(
+      null,
+      'PUBLIC_ENROLLMENT_CREATED',
+      {
+        enrollmentId: enrollment.id,
+        courseId,
+      }
+    );
 
     res.status(201).json({ enrollment });
   } catch (err) {
@@ -95,11 +93,7 @@ async function createPublic(req, res, next) {
   }
 }
 
-// ============================================================
-// INSCRIPTION STAFF
 // POST /api/v1/enrollments
-// ============================================================
-
 async function createStaff(req, res, next) {
   try {
     const {
@@ -158,10 +152,14 @@ async function createStaff(req, res, next) {
       },
     });
 
-    await logAction(req.user?.id, 'STAFF_ENROLLMENT_CREATED', {
-      enrollmentId: enrollment.id,
-      courseId,
-    });
+    await logAction(
+      req.user?.id,
+      'STAFF_ENROLLMENT_CREATED',
+      {
+        enrollmentId: enrollment.id,
+        courseId,
+      }
+    );
 
     res.status(201).json({ enrollment });
   } catch (err) {
@@ -169,11 +167,7 @@ async function createStaff(req, res, next) {
   }
 }
 
-// ============================================================
-// LISTE DES INSCRIPTIONS
 // GET /api/v1/enrollments
-// ============================================================
-
 async function list(req, res, next) {
   try {
     const { statut, courseId } = req.query;
@@ -202,11 +196,8 @@ async function list(req, res, next) {
   }
 }
 
-// ============================================================
-// MODIFICATION D'UNE INSCRIPTION
 // PUT /api/v1/enrollments/:id
-// ============================================================
-
+// Mise à jour statut / paiement / session / notes
 async function update(req, res, next) {
   try {
     const { id } = req.params;
@@ -261,12 +252,16 @@ async function update(req, res, next) {
       },
     });
 
-    await logAction(req.user?.id, 'ENROLLMENT_UPDATED', {
-      enrollmentId: id,
-      statut,
-      paymentMethod,
-      amountPaid,
-    });
+    await logAction(
+      req.user?.id,
+      'ENROLLMENT_UPDATED',
+      {
+        enrollmentId: id,
+        statut,
+        paymentMethod,
+        amountPaid,
+      }
+    );
 
     res.json({ enrollment });
   } catch (err) {
@@ -274,11 +269,8 @@ async function update(req, res, next) {
   }
 }
 
-// ============================================================
-// MODIFICATION DE L'APPRENANT
 // PUT /api/v1/enrollments/:id/student
-// ============================================================
-
+// Correction des informations de l'apprenant
 async function updateStudent(req, res, next) {
   try {
     const { id } = req.params;
@@ -300,7 +292,7 @@ async function updateStudent(req, res, next) {
       });
     }
 
-    // Recherche de l'inscription pour récupérer le studentId
+    // On récupère l'inscription pour identifier l'étudiant
     const enrollment = await prisma.enrollment.findUnique({
       where: { id },
       include: {
@@ -314,8 +306,8 @@ async function updateStudent(req, res, next) {
       });
     }
 
-    // Si un email est fourni, on évite de l'affecter à
-    // un autre étudiant existant.
+    // Si un email est renseigné, vérifier qu'il n'appartient
+    // pas déjà à un autre étudiant.
     if (emailRaw) {
       const existingStudent = await prisma.student.findFirst({
         where: {
@@ -347,12 +339,18 @@ async function updateStudent(req, res, next) {
       },
     });
 
-    await logAction(req.user?.id, 'STUDENT_UPDATED', {
-      studentId: student.id,
-      enrollmentId: id,
-      nom,
-      prenom,
-    });
+    await logAction(
+      req.user?.id,
+      'STUDENT_UPDATED',
+      {
+        studentId: student.id,
+        enrollmentId: id,
+        oldName: enrollment.student
+          ? `${enrollment.student.prenom} ${enrollment.student.nom}`
+          : null,
+        newName: `${student.prenom} ${student.nom}`,
+      }
+    );
 
     res.json({
       student,
@@ -362,11 +360,7 @@ async function updateStudent(req, res, next) {
   }
 }
 
-// ============================================================
-// SUPPRESSION D'UNE INSCRIPTION
 // DELETE /api/v1/enrollments/:id
-// ============================================================
-
 async function remove(req, res, next) {
   try {
     const { id } = req.params;
@@ -375,19 +369,19 @@ async function remove(req, res, next) {
       where: { id },
     });
 
-    await logAction(req.user?.id, 'ENROLLMENT_DELETED', {
-      enrollmentId: id,
-    });
+    await logAction(
+      req.user?.id,
+      'ENROLLMENT_DELETED',
+      {
+        enrollmentId: id,
+      }
+    );
 
     res.status(204).send();
   } catch (err) {
     next(err);
   }
 }
-
-// ============================================================
-// EXPORTS
-// ============================================================
 
 module.exports = {
   createPublic,
