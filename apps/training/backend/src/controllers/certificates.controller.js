@@ -30,12 +30,6 @@ const SIGNATORY_TITLE = 'Directeur de la Formation';
 // DATE HELPERS
 // -----------------------------------------------------------------------------
 
-/**
- * Formate une date sans dépendre du timezone du serveur Render.
- *
- * Exemple :
- * 2026-08-03 -> 03 août 2026
- */
 function formatDate(date) {
   if (!date) return '';
 
@@ -69,7 +63,7 @@ function formatDate(date) {
  * Retourne le mois et l'année en français.
  *
  * Exemple :
- * 2026-08-03 -> AOÛT 2026
+ * 03 août 2026 -> AOÛT 2026
  */
 function formatMonthYear(date) {
   if (!date) return '';
@@ -115,11 +109,8 @@ function addOneMonth(date) {
   const month = value.getUTCMonth();
   const day = value.getUTCDate();
 
-  // Calcul du mois suivant.
   const targetMonth = month + 1;
 
-  // On commence au premier jour du mois cible afin d'éviter
-  // les problèmes liés aux mois de 28/29/30/31 jours.
   const result = new Date(
     Date.UTC(
       year,
@@ -128,15 +119,13 @@ function addOneMonth(date) {
     )
   );
 
-  // Nombre de jours du mois cible.
-  const daysInTargetMonth =
-    new Date(
-      Date.UTC(
-        result.getUTCFullYear(),
-        result.getUTCMonth() + 1,
-        0
-      )
-    ).getUTCDate();
+  const daysInTargetMonth = new Date(
+    Date.UTC(
+      result.getUTCFullYear(),
+      result.getUTCMonth() + 1,
+      0
+    )
+  ).getUTCDate();
 
   result.setUTCDate(
     Math.min(day, daysInTargetMonth)
@@ -149,10 +138,7 @@ function addOneMonth(date) {
  * Période de formation affichée sur le certificat.
  *
  * Exemple :
- * startDate = 03/08/2026
- *
- * résultat :
- * AOÛT 2026 — SEPTEMBRE 2026
+ * 03 août 2026 -> AOÛT 2026 — SEPTEMBRE 2026
  */
 function formatTrainingPeriod(startDate) {
   if (!startDate) {
@@ -172,7 +158,7 @@ function formatTrainingPeriod(startDate) {
 }
 
 /**
- * Format date destiné au calcul SHA-256.
+ * Format date pour le SHA-256.
  */
 function formatDateForHash(date) {
   if (!date) return '';
@@ -297,8 +283,8 @@ function computeCertificateHash({
 /**
  * Ancienne méthode de hash.
  *
- * Elle permet de conserver la vérification des attestations
- * créées avant l'ajout de trainingStartDate.
+ * Conservée pour les certificats créés avant l'ajout
+ * de trainingStartDate.
  */
 function computeLegacyCertificateHash({
   numero,
@@ -339,22 +325,16 @@ async function ensureHash(certificate) {
       studentName: certificate.studentNameSnapshot,
       courseTitle: certificate.courseTitleSnapshot,
       durationHours: certificate.durationHoursSnapshot,
-      trainingStartDate:
-        certificate.trainingStartDate,
-      completionDate:
-        certificate.completionDate,
+      trainingStartDate: certificate.trainingStartDate,
+      completionDate: certificate.completionDate,
     });
   } else {
     hash = computeLegacyCertificateHash({
       numero: certificate.numero,
-      studentName:
-        certificate.studentNameSnapshot,
-      courseTitle:
-        certificate.courseTitleSnapshot,
-      durationHours:
-        certificate.durationHoursSnapshot,
-      completionDate:
-        certificate.completionDate,
+      studentName: certificate.studentNameSnapshot,
+      courseTitle: certificate.courseTitleSnapshot,
+      durationHours: certificate.durationHoursSnapshot,
+      completionDate: certificate.completionDate,
     });
   }
 
@@ -584,8 +564,7 @@ async function generateCertificatePdf({
     {
       x: periodeX,
       y: periodeY,
-      maxWidth:
-        periodeMaxWidth,
+      maxWidth: periodeMaxWidth,
       size: 10,
       minSize: 6.5,
       color: rgb(
@@ -791,12 +770,15 @@ async function issue(
       });
     }
 
+    // -------------------------------------------------------------------------
+    // INSCRIPTION
+    // -------------------------------------------------------------------------
+
     const enrollment =
       await prisma.enrollment.findUnique({
         where: {
           id: enrollmentId,
         },
-
         include: {
           student: true,
           course: true,
@@ -819,6 +801,10 @@ async function issue(
       });
     }
 
+    // -------------------------------------------------------------------------
+    // PAIEMENT
+    // -------------------------------------------------------------------------
+
     if (
       enrollment.amountPaid <
       enrollment.amountDue
@@ -830,21 +816,46 @@ async function issue(
     }
 
     // -------------------------------------------------------------------------
-    // DATE DE DEBUT DE FORMATION
+    // SESSION DE FORMATION
+    // -------------------------------------------------------------------------
+    //
+    // Priorité :
+    // 1. session explicitement associée à l'inscription
+    // 2. sinon première session active de la formation
+    //
+    // Cela permet notamment de délivrer les attestations des anciennes
+    // inscriptions qui ont été créées avant l'association à une session.
     // -------------------------------------------------------------------------
 
+    let trainingSession =
+      enrollment.session;
+
+    if (!trainingSession) {
+      trainingSession =
+        await prisma.session.findFirst({
+          where: {
+            courseId:
+              enrollment.courseId,
+            active: true,
+          },
+          orderBy: {
+            startDate: 'asc',
+          },
+        });
+    }
+
     if (
-      !enrollment.session ||
-      !enrollment.session.startDate
+      !trainingSession ||
+      !trainingSession.startDate
     ) {
       return res.status(400).json({
         error:
-          "Impossible de délivrer l'attestation : aucune date de début de formation n'est renseignée pour la session.",
+          "Impossible de délivrer l'attestation : aucune session de formation avec une date de début n'est disponible pour cette formation.",
       });
     }
 
     const trainingStartDate =
-      enrollment.session.startDate;
+      trainingSession.startDate;
 
     // -------------------------------------------------------------------------
     // DATE D'OBTENTION
@@ -852,9 +863,7 @@ async function issue(
 
     const finalDate =
       completionDate
-        ? new Date(
-            completionDate
-          )
+        ? new Date(completionDate)
         : new Date();
 
     if (
@@ -869,11 +878,15 @@ async function issue(
     }
 
     // -------------------------------------------------------------------------
-    // DONNEES
+    // NUMERO
     // -------------------------------------------------------------------------
 
     const numero =
       await generateCertificateNumber();
+
+    // -------------------------------------------------------------------------
+    // NOM ET FORMATION
+    // -------------------------------------------------------------------------
 
     const studentName =
       `${enrollment.student.prenom} ${enrollment.student.nom}`;
@@ -926,14 +939,13 @@ async function issue(
       });
 
     // -------------------------------------------------------------------------
-    // COMPLETED
+    // MARQUER L'INSCRIPTION COMME TERMINEE
     // -------------------------------------------------------------------------
 
     await prisma.enrollment.update({
       where: {
         id: enrollmentId,
       },
-
       data: {
         statut: 'COMPLETED',
       },
@@ -952,6 +964,11 @@ async function issue(
         enrollmentId,
 
         trainingStartDate,
+
+        trainingPeriod:
+          formatTrainingPeriod(
+            trainingStartDate
+          ),
       }
     );
 
@@ -1061,7 +1078,6 @@ async function verify(
     if (!certificate) {
       return res.status(404).json({
         valid: false,
-
         error:
           'Aucune attestation ne correspond à ce numéro.',
       });
