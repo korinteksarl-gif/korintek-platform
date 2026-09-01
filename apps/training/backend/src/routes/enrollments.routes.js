@@ -38,7 +38,10 @@ router.post(
 
 router.use(authenticate);
 
-// Liste des inscriptions
+// ============================================================
+// LISTE
+// ============================================================
+
 router.get(
   '/',
   requireRole([
@@ -50,7 +53,10 @@ router.get(
   list
 );
 
-// Création d'une inscription par l'équipe
+// ============================================================
+// CRÉATION
+// ============================================================
+
 router.post(
   '/',
   requireRole([
@@ -60,8 +66,25 @@ router.post(
   createStaff
 );
 
-// Modification d'une inscription
+// ============================================================
+// CORRECTION DES INFORMATIONS APPRENANT
+// IMPORTANT : cette route doit être AVANT /:id
+// ============================================================
+
+router.put(
+  '/:id/student',
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+  ]),
+  updateStudent
+);
+
+// ============================================================
+// MODIFICATION DE L'INSCRIPTION
 // Statut / paiement / session / notes
+// ============================================================
+
 router.put(
   '/:id',
   requireRole([
@@ -74,21 +97,9 @@ router.put(
 );
 
 // ============================================================
-// CORRECTION DES INFORMATIONS APPRENANT
+// SUPPRESSION
 // ============================================================
 
-// Modification du nom, prénom, email et téléphone
-// Seuls SUPER_ADMIN et ADMIN peuvent le faire
-router.put(
-  '/:id/student',
-  requireRole([
-    'SUPER_ADMIN',
-    'ADMIN',
-  ]),
-  updateStudent
-);
-
-// Suppression
 router.delete(
   '/:id',
   requireRole([
