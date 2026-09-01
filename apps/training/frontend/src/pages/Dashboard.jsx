@@ -41,40 +41,31 @@ export default function Dashboard() {
   // PAYMENT EDIT
   // ---------------------------------------------------------------------------
 
-  const [editingPaymentId, setEditingPaymentId] =
-    useState(null);
-
-  const [editAmount, setEditAmount] =
-    useState('');
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
 
   // ---------------------------------------------------------------------------
   // STUDENT EDIT
   // ---------------------------------------------------------------------------
 
-  const [editingStudentId, setEditingStudentId] =
-    useState(null);
+  const [editingStudentId, setEditingStudentId] = useState(null);
 
-  const [editStudent, setEditStudent] =
-    useState({
-      nom: '',
-      prenom: '',
-      email: '',
-      telephone: '',
-    });
+  const [editStudent, setEditStudent] = useState({
+    nom: '',
+    prenom: '',
+    email: '',
+    telephone: '',
+  });
 
-  const [savingStudent, setSavingStudent] =
-    useState(false);
+  const [savingStudent, setSavingStudent] = useState(false);
 
   const navigate = useNavigate();
 
   const user = JSON.parse(
-    localStorage.getItem(
-      'korintek_training_user'
-    ) || 'null'
+    localStorage.getItem('korintek_training_user') || 'null'
   );
 
-  const isSuperAdmin =
-    user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   // ---------------------------------------------------------------------------
   // LOAD
@@ -82,26 +73,15 @@ export default function Dashboard() {
 
   async function load() {
     try {
-      const [
-        enrRes,
-        courseRes,
-      ] = await Promise.all([
+      const [enrRes, courseRes] = await Promise.all([
         apiClient.get('/enrollments'),
         apiClient.get('/courses'),
       ]);
 
-      setEnrollments(
-        enrRes.data.enrollments
-      );
-
-      setCourses(
-        courseRes.data.courses
-      );
+      setEnrollments(enrRes.data.enrollments || []);
+      setCourses(courseRes.data.courses || []);
     } catch (err) {
-      console.error(
-        'Erreur lors du chargement :',
-        err
-      );
+      console.error('Erreur lors du chargement :', err);
     }
   }
 
@@ -114,13 +94,8 @@ export default function Dashboard() {
   // ---------------------------------------------------------------------------
 
   function logout() {
-    localStorage.removeItem(
-      'korintek_training_token'
-    );
-
-    localStorage.removeItem(
-      'korintek_training_user'
-    );
+    localStorage.removeItem('korintek_training_token');
+    localStorage.removeItem('korintek_training_user');
 
     navigate('/login');
   }
@@ -133,10 +108,7 @@ export default function Dashboard() {
     e.preventDefault();
 
     try {
-      await apiClient.post(
-        '/enrollments',
-        form
-      );
+      await apiClient.post('/enrollments', form);
 
       setForm({
         nom: '',
@@ -163,10 +135,7 @@ export default function Dashboard() {
   // UPDATE STATUS
   // ---------------------------------------------------------------------------
 
-  async function updateStatut(
-    id,
-    statut
-  ) {
+  async function updateStatut(id, statut) {
     try {
       await apiClient.put(
         `/enrollments/${id}`,
@@ -186,9 +155,7 @@ export default function Dashboard() {
   // ISSUE CERTIFICATE
   // ---------------------------------------------------------------------------
 
-  async function issueCertificate(
-    enrollmentId
-  ) {
+  async function issueCertificate(enrollmentId) {
     try {
       await apiClient.post(
         '/certificates/issue',
@@ -208,16 +175,9 @@ export default function Dashboard() {
   // PAYMENT EDIT
   // ---------------------------------------------------------------------------
 
-  function startEditPayment(
-    enrollment
-  ) {
-    setEditingPaymentId(
-      enrollment.id
-    );
-
-    setEditAmount(
-      String(enrollment.amountPaid)
-    );
+  function startEditPayment(enrollment) {
+    setEditingPaymentId(enrollment.id);
+    setEditAmount(String(enrollment.amountPaid ?? 0));
   }
 
   async function savePayment(id) {
@@ -225,8 +185,7 @@ export default function Dashboard() {
       await apiClient.put(
         `/enrollments/${id}`,
         {
-          amountPaid:
-            Number(editAmount),
+          amountPaid: Number(editAmount),
         }
       );
 
@@ -245,29 +204,14 @@ export default function Dashboard() {
   // STUDENT EDIT
   // ---------------------------------------------------------------------------
 
-  function startEditStudent(
-    enrollment
-  ) {
-    setEditingStudentId(
-      enrollment.id
-    );
+  function startEditStudent(enrollment) {
+    setEditingStudentId(enrollment.id);
 
     setEditStudent({
-      nom:
-        enrollment.student?.nom ||
-        '',
-
-      prenom:
-        enrollment.student?.prenom ||
-        '',
-
-      email:
-        enrollment.student?.email ||
-        '',
-
-      telephone:
-        enrollment.student?.telephone ||
-        '',
+      nom: enrollment.student?.nom || '',
+      prenom: enrollment.student?.prenom || '',
+      email: enrollment.student?.email || '',
+      telephone: enrollment.student?.telephone || '',
     });
   }
 
@@ -282,9 +226,14 @@ export default function Dashboard() {
     });
   }
 
-  async function saveStudent(
-    enrollmentId
-  ) {
+  // ---------------------------------------------------------------------------
+  // SAVE STUDENT
+  // IMPORTANT :
+  // Utilise /:id/student et non /:id
+  // afin de modifier Student et synchroniser l'attestation.
+  // ---------------------------------------------------------------------------
+
+  async function saveStudent(enrollmentId) {
     if (
       !editStudent.nom.trim() ||
       !editStudent.prenom.trim()
@@ -296,10 +245,10 @@ export default function Dashboard() {
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        'Confirmer la correction des informations de cet apprenant ?\n\nSi une attestation existe déjà, son nom et son empreinte de sécurité seront automatiquement mis à jour.'
-      );
+    const confirmed = window.confirm(
+      'Confirmer la correction des informations de cet apprenant ?\n\n' +
+      'Si une attestation existe déjà, son nom et son empreinte de sécurité seront automatiquement mis à jour.'
+    );
 
     if (!confirmed) {
       return;
@@ -308,23 +257,19 @@ export default function Dashboard() {
     setSavingStudent(true);
 
     try {
+      // IMPORTANT :
+      // Route dédiée à la modification de l'apprenant.
       await apiClient.put(
-        `/enrollments/${enrollmentId}`,
+        `/enrollments/${enrollmentId}/student`,
         {
-          nom:
-            editStudent.nom.trim(),
-
-          prenom:
-            editStudent.prenom.trim(),
-
-          email:
-            editStudent.email.trim(),
-
-          telephone:
-            editStudent.telephone.trim(),
+          nom: editStudent.nom.trim(),
+          prenom: editStudent.prenom.trim(),
+          email: editStudent.email.trim(),
+          telephone: editStudent.telephone.trim(),
         }
       );
 
+      // Fermer le formulaire
       setEditingStudentId(null);
 
       setEditStudent({
@@ -334,12 +279,20 @@ export default function Dashboard() {
         telephone: '',
       });
 
+      // Recharger depuis la base de données
+      // pour afficher immédiatement la nouvelle identité.
       await load();
 
       alert(
-        'Apprenant corrigé avec succès.\n\nL’attestation existante a également été synchronisée.'
+        'Apprenant corrigé avec succès.\n\n' +
+        'L’attestation existante a également été synchronisée.'
       );
     } catch (err) {
+      console.error(
+        'Erreur modification apprenant:',
+        err
+      );
+
       alert(
         err.response?.data?.error ||
         "Erreur lors de la correction de l'apprenant."
@@ -398,8 +351,7 @@ export default function Dashboard() {
             </button>
           )}
 
-          {user?.role ===
-            'SUPER_ADMIN' && (
+          {user?.role === 'SUPER_ADMIN' && (
             <button
               onClick={() =>
                 navigate('/users')
@@ -462,8 +414,7 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  prenom:
-                    e.target.value,
+                  prenom: e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -476,8 +427,7 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  nom:
-                    e.target.value,
+                  nom: e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -489,8 +439,7 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  email:
-                    e.target.value,
+                  email: e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -502,8 +451,7 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  telephone:
-                    e.target.value,
+                  telephone: e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -515,8 +463,7 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  courseId:
-                    e.target.value,
+                  courseId: e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -536,9 +483,7 @@ export default function Dashboard() {
             </select>
 
             <select
-              value={
-                form.paymentMethod
-              }
+              value={form.paymentMethod}
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -572,9 +517,7 @@ export default function Dashboard() {
             <input
               type="number"
               placeholder="Montant payé (FCFA)"
-              value={
-                form.amountPaid
-              }
+              value={form.amountPaid}
               onChange={(e) =>
                 setForm({
                   ...form,
@@ -638,16 +581,14 @@ export default function Dashboard() {
                 {enrollments.map((e) => {
 
                   const paymentComplete =
-                    e.amountPaid >=
-                    e.amountDue;
+                    Number(e.amountPaid) >=
+                    Number(e.amountDue);
 
                   const isEditingThisPayment =
-                    editingPaymentId ===
-                    e.id;
+                    editingPaymentId === e.id;
 
                   const isEditingThisStudent =
-                    editingStudentId ===
-                    e.id;
+                    editingStudentId === e.id;
 
                   return (
                     <tr
@@ -670,9 +611,7 @@ export default function Dashboard() {
                               <input
                                 autoFocus
                                 placeholder="Prénom"
-                                value={
-                                  editStudent.prenom
-                                }
+                                value={editStudent.prenom}
                                 onChange={(ev) =>
                                   setEditStudent({
                                     ...editStudent,
@@ -685,9 +624,7 @@ export default function Dashboard() {
 
                               <input
                                 placeholder="Nom"
-                                value={
-                                  editStudent.nom
-                                }
+                                value={editStudent.nom}
                                 onChange={(ev) =>
                                   setEditStudent({
                                     ...editStudent,
@@ -702,9 +639,7 @@ export default function Dashboard() {
 
                             <input
                               placeholder="Email"
-                              value={
-                                editStudent.email
-                              }
+                              value={editStudent.email}
                               onChange={(ev) =>
                                 setEditStudent({
                                   ...editStudent,
@@ -717,9 +652,7 @@ export default function Dashboard() {
 
                             <input
                               placeholder="Téléphone"
-                              value={
-                                editStudent.telephone
-                              }
+                              value={editStudent.telephone}
                               onChange={(ev) =>
                                 setEditStudent({
                                   ...editStudent,
@@ -733,14 +666,11 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2">
 
                               <button
+                                type="button"
                                 onClick={() =>
-                                  saveStudent(
-                                    e.id
-                                  )
+                                  saveStudent(e.id)
                                 }
-                                disabled={
-                                  savingStudent
-                                }
+                                disabled={savingStudent}
                                 className="text-xs bg-korintek-teal text-white rounded px-3 py-1 disabled:opacity-50"
                               >
                                 {savingStudent
@@ -749,12 +679,11 @@ export default function Dashboard() {
                               </button>
 
                               <button
+                                type="button"
                                 onClick={
                                   cancelEditStudent
                                 }
-                                disabled={
-                                  savingStudent
-                                }
+                                disabled={savingStudent}
                                 className="text-xs text-slate-400 hover:text-slate-700"
                               >
                                 Annuler
@@ -769,15 +698,14 @@ export default function Dashboard() {
                           <div className="flex items-center gap-2">
 
                             <span>
-                              {e.student.prenom}{' '}
-                              {e.student.nom}
+                              {e.student?.prenom}{' '}
+                              {e.student?.nom}
                             </span>
 
                             <button
+                              type="button"
                               onClick={() =>
-                                startEditStudent(
-                                  e
-                                )
+                                startEditStudent(e)
                               }
                               className="text-xs text-slate-400 hover:text-korintek-tealDark underline whitespace-nowrap"
                               title="Modifier les informations de l'apprenant"
@@ -796,7 +724,7 @@ export default function Dashboard() {
                       {/* --------------------------------------------------- */}
 
                       <td className="px-4 py-2">
-                        {e.course.title}
+                        {e.course?.title || '-'}
                       </td>
 
                       {/* --------------------------------------------------- */}
@@ -812,9 +740,7 @@ export default function Dashboard() {
                             <input
                               type="number"
                               autoFocus
-                              value={
-                                editAmount
-                              }
+                              value={editAmount}
                               onChange={(ev) =>
                                 setEditAmount(
                                   ev.target.value
@@ -826,18 +752,17 @@ export default function Dashboard() {
                             <span className="text-xs">
                               /
                               {' '}
-                              {e.amountDue.toLocaleString(
-                                'fr-FR'
-                              )}
+                              {Number(
+                                e.amountDue || 0
+                              ).toLocaleString('fr-FR')}
                               {' '}
                               FCFA
                             </span>
 
                             <button
+                              type="button"
                               onClick={() =>
-                                savePayment(
-                                  e.id
-                                )
+                                savePayment(e.id)
                               }
                               className="text-xs text-korintek-tealDark font-medium ml-1"
                             >
@@ -845,10 +770,9 @@ export default function Dashboard() {
                             </button>
 
                             <button
+                              type="button"
                               onClick={() =>
-                                setEditingPaymentId(
-                                  null
-                                )
+                                setEditingPaymentId(null)
                               }
                               className="text-xs text-slate-400"
                             >
@@ -868,23 +792,22 @@ export default function Dashboard() {
                                   : 'text-amber-600 font-medium'
                               }
                             >
-                              {e.amountPaid.toLocaleString(
-                                'fr-FR'
-                              )}
+                              {Number(
+                                e.amountPaid || 0
+                              ).toLocaleString('fr-FR')}
                               {' / '}
-                              {e.amountDue.toLocaleString(
-                                'fr-FR'
-                              )}
+                              {Number(
+                                e.amountDue || 0
+                              ).toLocaleString('fr-FR')}
                               {' '}
                               FCFA
                             </span>
 
                             {isSuperAdmin && (
                               <button
+                                type="button"
                                 onClick={() =>
-                                  startEditPayment(
-                                    e
-                                  )
+                                  startEditPayment(e)
                                 }
                                 className="text-xs text-slate-400 hover:text-korintek-tealDark underline"
                                 title="Modifier le montant payé (SUPER_ADMIN)"
@@ -913,21 +836,21 @@ export default function Dashboard() {
                               ev.target.value
                             )
                           }
-                          className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut]}`}
+                          className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut] || ''}`}
                         >
 
                           {Object.entries(
                             STATUT_LABELS
-                          ).map(
-                            ([k, v]) => (
-                              <option
-                                key={k}
-                                value={k}
-                              >
-                                {v}
-                              </option>
-                            )
-                          )}
+                          ).map(([k, v]) => (
+
+                            <option
+                              key={k}
+                              value={k}
+                            >
+                              {v}
+                            </option>
+
+                          ))}
 
                         </select>
 
@@ -953,10 +876,9 @@ export default function Dashboard() {
                         ) : paymentComplete ? (
 
                           <button
+                            type="button"
                             onClick={() =>
-                              issueCertificate(
-                                e.id
-                              )
+                              issueCertificate(e.id)
                             }
                             className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1"
                           >
@@ -966,6 +888,7 @@ export default function Dashboard() {
                         ) : (
 
                           <button
+                            type="button"
                             disabled
                             title="Paiement incomplet — impossible de délivrer l'attestation"
                             className="text-xs bg-slate-200 text-slate-400 rounded-full px-3 py-1 cursor-not-allowed"
@@ -982,6 +905,7 @@ export default function Dashboard() {
                 })}
 
                 {!enrollments.length && (
+
                   <tr>
 
                     <td
@@ -992,6 +916,7 @@ export default function Dashboard() {
                     </td>
 
                   </tr>
+
                 )}
 
               </tbody>
