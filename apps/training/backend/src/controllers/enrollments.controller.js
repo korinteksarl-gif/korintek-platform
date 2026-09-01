@@ -1,10 +1,9 @@
-const crypto = require('crypto');
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
 
-// -----------------------------------------------------------------------------
-// HELPERS
-// -----------------------------------------------------------------------------
+// ============================================================
+// UTILITAIRES
+// ============================================================
 
 function sanitizeText(value, maxLength = 200) {
   if (typeof value !== 'string') return '';
@@ -13,157 +12,13 @@ function sanitizeText(value, maxLength = 200) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Format date YYYY-MM-DD sans dépendre du timezone du serveur.
- */
-function formatDateForHash(date) {
-  if (!date) return '';
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) {
-    return '';
-  }
-
-  return value.toISOString().slice(0, 10);
-}
-
-/**
- * Hash utilisé par les nouveaux certificats.
- *
- * IMPORTANT :
- * Il doit rester identique à celui utilisé dans
- * certificates.controller.js.
- */
-function computeCertificateHash({
-  numero,
-  studentName,
-  courseTitle,
-  durationHours,
-  trainingStartDate,
-  completionDate,
-}) {
-  const payload = [
-    numero,
-    studentName,
-    courseTitle,
-    durationHours,
-    formatDateForHash(trainingStartDate),
-    formatDateForHash(completionDate),
-  ].join('|');
-
-  return crypto
-    .createHash('sha256')
-    .update(payload)
-    .digest('hex');
-}
-
-/**
- * Ancien hash utilisé par les certificats historiques
- * qui ne possèdent pas de trainingStartDate.
- */
-function computeLegacyCertificateHash({
-  numero,
-  studentName,
-  courseTitle,
-  durationHours,
-  completionDate,
-}) {
-  const payload = [
-    numero,
-    studentName,
-    courseTitle,
-    durationHours,
-    formatDateForHash(completionDate),
-  ].join('|');
-
-  return crypto
-    .createHash('sha256')
-    .update(payload)
-    .digest('hex');
-}
-
-/**
- * Synchronise le nom d'un étudiant avec toutes ses attestations existantes.
- *
- * Le nom affiché dans le PDF est stocké dans studentNameSnapshot.
- * Lorsque le nom de l'étudiant est corrigé, il faut donc également
- * corriger ce snapshot et recalculer le SHA-256.
- */
-async function synchronizeStudentCertificates(studentId, studentName) {
-  const enrollments = await prisma.enrollment.findMany({
-    where: {
-      studentId,
-    },
-    include: {
-      course: true,
-      certificate: true,
-    },
-  });
-
-  for (const enrollment of enrollments) {
-    const certificate = enrollment.certificate;
-
-    if (!certificate) {
-      continue;
-    }
-
-    let certificateHash;
-
-    // Certificat utilisant le nouveau système de hash
-    if (certificate.trainingStartDate) {
-      certificateHash = computeCertificateHash({
-        numero: certificate.numero,
-        studentName,
-        courseTitle: certificate.courseTitleSnapshot,
-        durationHours: certificate.durationHoursSnapshot,
-        trainingStartDate: certificate.trainingStartDate,
-        completionDate: certificate.completionDate,
-      });
-    } else {
-      // Compatibilité avec les anciens certificats
-      certificateHash = computeLegacyCertificateHash({
-        numero: certificate.numero,
-        studentName,
-        courseTitle: certificate.courseTitleSnapshot,
-        durationHours: certificate.durationHoursSnapshot,
-        completionDate: certificate.completionDate,
-      });
-    }
-
-    await prisma.certificate.update({
-      where: {
-        id: certificate.id,
-      },
-      data: {
-        studentNameSnapshot: studentName,
-        certificateHash,
-      },
-    });
-  }
-}
-
-// -----------------------------------------------------------------------------
-// FIND / CREATE STUDENT
-// -----------------------------------------------------------------------------
-
-async function findOrCreateStudent({
-  nom,
-  prenom,
-  email,
-  telephone,
-}) {
-  // Correspondance simple par email si fourni.
+async function findOrCreateStudent({ nom, prenom, email, telephone }) {
   if (email) {
     const existing = await prisma.student.findFirst({
-      where: {
-        email,
-      },
+      where: { email },
     });
 
-    if (existing) {
-      return existing;
-    }
+    if (existing) return existing;
   }
 
   return prisma.student.create({
@@ -176,10 +31,10 @@ async function findOrCreateStudent({
   });
 }
 
-// -----------------------------------------------------------------------------
-// PUBLIC ENROLLMENT
+// ============================================================
+// INSCRIPTION PUBLIQUE
 // POST /api/v1/enrollments/public
-// -----------------------------------------------------------------------------
+// ============================================================
 
 async function createPublic(req, res, next) {
   try {
@@ -203,9 +58,7 @@ async function createPublic(req, res, next) {
     }
 
     const course = await prisma.course.findUnique({
-      where: {
-        id: courseId,
-      },
+      where: { id: courseId },
     });
 
     if (!course || !course.active) {
@@ -240,18 +93,16 @@ async function createPublic(req, res, next) {
       }
     );
 
-    res.status(201).json({
-      enrollment,
-    });
+    res.status(201).json({ enrollment });
   } catch (err) {
     next(err);
   }
 }
 
-// -----------------------------------------------------------------------------
-// STAFF ENROLLMENT
+// ============================================================
+// INSCRIPTION STAFF
 // POST /api/v1/enrollments
-// -----------------------------------------------------------------------------
+// ============================================================
 
 async function createStaff(req, res, next) {
   try {
@@ -274,9 +125,7 @@ async function createStaff(req, res, next) {
     }
 
     const course = await prisma.course.findUnique({
-      where: {
-        id: courseId,
-      },
+      where: { id: courseId },
     });
 
     if (!course) {
@@ -294,6 +143,14 @@ async function createStaff(req, res, next) {
 
     const paid = Number(amountPaid) || 0;
 
+    let statut = 'PENDING';
+
+    if (course.price > 0 && paid >= course.price) {
+      statut = 'PAID';
+    } else if (paid > 0) {
+      statut = 'PAYMENT_PARTIAL';
+    }
+
     const enrollment = await prisma.enrollment.create({
       data: {
         studentId: student.id,
@@ -303,12 +160,7 @@ async function createStaff(req, res, next) {
         amountDue: course.price,
         amountPaid: paid,
         paymentMethod: paymentMethod || null,
-        statut:
-          paid >= course.price && course.price > 0
-            ? 'PAID'
-            : paid > 0
-              ? 'PAYMENT_PARTIAL'
-              : 'PENDING',
+        statut,
         notes: notes || null,
       },
     });
@@ -322,25 +174,20 @@ async function createStaff(req, res, next) {
       }
     );
 
-    res.status(201).json({
-      enrollment,
-    });
+    res.status(201).json({ enrollment });
   } catch (err) {
     next(err);
   }
 }
 
-// -----------------------------------------------------------------------------
-// LIST
+// ============================================================
+// LISTE DES INSCRIPTIONS
 // GET /api/v1/enrollments
-// -----------------------------------------------------------------------------
+// ============================================================
 
 async function list(req, res, next) {
   try {
-    const {
-      statut,
-      courseId,
-    } = req.query;
+    const { statut, courseId } = req.query;
 
     const where = {};
 
@@ -365,43 +212,24 @@ async function list(req, res, next) {
       },
     });
 
-    res.json({
-      enrollments,
-    });
+    res.json({ enrollments });
   } catch (err) {
     next(err);
   }
 }
 
-// -----------------------------------------------------------------------------
-// UPDATE
+// ============================================================
+// MODIFICATION INSCRIPTION
 // PUT /api/v1/enrollments/:id
 //
-// Permet maintenant de modifier :
-// - nom
-// - prénom
-// - email
-// - téléphone
-// - statut
-// - paiement
-// - session
-// - notes
-//
-// Lorsqu'un nom/prénom est modifié, toutes les attestations existantes
-// de l'étudiant sont automatiquement synchronisées.
-// -----------------------------------------------------------------------------
+// Paiement / statut / session / notes
+// ============================================================
 
 async function update(req, res, next) {
   try {
-    const {
-      id,
-    } = req.params;
+    const { id } = req.params;
 
     const {
-      nom,
-      prenom,
-      email,
-      telephone,
       statut,
       paymentMethod,
       amountPaid,
@@ -409,10 +237,7 @@ async function update(req, res, next) {
       notes,
     } = req.body;
 
-    // -------------------------------------------------------------------------
-    // CONTROLE DU MONTANT PAYE
-    // -------------------------------------------------------------------------
-
+    // Seul SUPER_ADMIN peut modifier le montant payé
     if (
       amountPaid !== undefined &&
       req.user?.role !== 'SUPER_ADMIN'
@@ -423,265 +248,38 @@ async function update(req, res, next) {
       });
     }
 
-    // -------------------------------------------------------------------------
-    // RECUPERATION DE L'INSCRIPTION
-    // -------------------------------------------------------------------------
+    const enrollment = await prisma.enrollment.update({
+      where: { id },
 
-    const existingEnrollment =
-      await prisma.enrollment.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          student: true,
-          certificate: true,
-          course: true,
-        },
-      });
+      data: {
+        ...(statut !== undefined && {
+          statut,
+        }),
 
-    if (!existingEnrollment) {
-      return res.status(404).json({
-        error: 'Inscription introuvable.',
-      });
-    }
+        ...(paymentMethod !== undefined && {
+          paymentMethod,
+        }),
 
-    // -------------------------------------------------------------------------
-    // PREPARATION DES DONNEES ETUDIANT
-    // -------------------------------------------------------------------------
+        ...(amountPaid !== undefined && {
+          amountPaid: Number(amountPaid),
+        }),
 
-    const studentData = {};
+        ...(sessionId !== undefined && {
+          sessionId: sessionId || null,
+        }),
 
-    if (nom !== undefined) {
-      const cleanNom = sanitizeText(nom, 100);
+        ...(notes !== undefined && {
+          notes,
+        }),
+      },
 
-      if (!cleanNom) {
-        return res.status(400).json({
-          error: 'Le nom ne peut pas être vide.',
-        });
-      }
-
-      studentData.nom = cleanNom;
-    }
-
-    if (prenom !== undefined) {
-      const cleanPrenom = sanitizeText(prenom, 100);
-
-      if (!cleanPrenom) {
-        return res.status(400).json({
-          error: 'Le prénom ne peut pas être vide.',
-        });
-      }
-
-      studentData.prenom = cleanPrenom;
-    }
-
-    if (email !== undefined) {
-      const cleanEmail = sanitizeText(email, 150);
-
-      if (cleanEmail && !EMAIL_RE.test(cleanEmail)) {
-        return res.status(400).json({
-          error: "Format d'email invalide.",
-        });
-      }
-
-      studentData.email = cleanEmail || null;
-    }
-
-    if (telephone !== undefined) {
-      const cleanTelephone = sanitizeText(
-        telephone,
-        30
-      );
-
-      studentData.telephone =
-        cleanTelephone || null;
-    }
-
-    // -------------------------------------------------------------------------
-    // MISE A JOUR
-    // -------------------------------------------------------------------------
-
-    let updatedEnrollment;
-
-    if (Object.keys(studentData).length > 0) {
-      /*
-       * Transaction :
-       *
-       * 1. modification de Student
-       * 2. récupération de toutes les attestations
-       * 3. mise à jour de studentNameSnapshot
-       * 4. recalcul du hash
-       * 5. mise à jour de l'inscription
-       *
-       * Si une étape échoue, Prisma annule la transaction.
-       */
-
-      updatedEnrollment =
-        await prisma.$transaction(
-          async (tx) => {
-            const updatedStudent =
-              await tx.student.update({
-                where: {
-                  id: existingEnrollment.studentId,
-                },
-                data: studentData,
-              });
-
-            const studentName =
-              `${updatedStudent.prenom} ${updatedStudent.nom}`;
-
-            // Toutes les inscriptions de cet étudiant.
-            const studentEnrollments =
-              await tx.enrollment.findMany({
-                where: {
-                  studentId:
-                    updatedStudent.id,
-                },
-                include: {
-                  certificate: true,
-                },
-              });
-
-            // Synchronisation des certificats existants.
-            for (
-              const studentEnrollment
-              of studentEnrollments
-            ) {
-              const certificate =
-                studentEnrollment.certificate;
-
-              if (!certificate) {
-                continue;
-              }
-
-              let certificateHash;
-
-              if (
-                certificate.trainingStartDate
-              ) {
-                certificateHash =
-                  computeCertificateHash({
-                    numero:
-                      certificate.numero,
-                    studentName,
-                    courseTitle:
-                      certificate.courseTitleSnapshot,
-                    durationHours:
-                      certificate.durationHoursSnapshot,
-                    trainingStartDate:
-                      certificate.trainingStartDate,
-                    completionDate:
-                      certificate.completionDate,
-                  });
-              } else {
-                certificateHash =
-                  computeLegacyCertificateHash({
-                    numero:
-                      certificate.numero,
-                    studentName,
-                    courseTitle:
-                      certificate.courseTitleSnapshot,
-                    durationHours:
-                      certificate.durationHoursSnapshot,
-                    completionDate:
-                      certificate.completionDate,
-                  });
-              }
-
-              await tx.certificate.update({
-                where: {
-                  id: certificate.id,
-                },
-                data: {
-                  studentNameSnapshot:
-                    studentName,
-                  certificateHash,
-                },
-              });
-            }
-
-            return tx.enrollment.update({
-              where: {
-                id,
-              },
-              data: {
-                ...(statut !== undefined && {
-                  statut,
-                }),
-
-                ...(paymentMethod !== undefined && {
-                  paymentMethod:
-                    paymentMethod || null,
-                }),
-
-                ...(amountPaid !== undefined && {
-                  amountPaid:
-                    Number(amountPaid),
-                }),
-
-                ...(sessionId !== undefined && {
-                  sessionId:
-                    sessionId || null,
-                }),
-
-                ...(notes !== undefined && {
-                  notes: notes || null,
-                }),
-              },
-              include: {
-                student: true,
-                course: true,
-                session: true,
-                certificate: true,
-              },
-            });
-          }
-        );
-    } else {
-      // Aucun changement d'identité :
-      // comportement classique de mise à jour de l'inscription.
-
-      updatedEnrollment =
-        await prisma.enrollment.update({
-          where: {
-            id,
-          },
-          data: {
-            ...(statut !== undefined && {
-              statut,
-            }),
-
-            ...(paymentMethod !== undefined && {
-              paymentMethod:
-                paymentMethod || null,
-            }),
-
-            ...(amountPaid !== undefined && {
-              amountPaid:
-                Number(amountPaid),
-            }),
-
-            ...(sessionId !== undefined && {
-              sessionId:
-                sessionId || null,
-            }),
-
-            ...(notes !== undefined && {
-              notes: notes || null,
-            }),
-          },
-          include: {
-            student: true,
-            course: true,
-            session: true,
-            certificate: true,
-          },
-        });
-    }
-
-    // -------------------------------------------------------------------------
-    // AUDIT
-    // -------------------------------------------------------------------------
+      include: {
+        student: true,
+        course: true,
+        session: true,
+        certificate: true,
+      },
+    });
 
     await logAction(
       req.user?.id,
@@ -691,34 +289,157 @@ async function update(req, res, next) {
         statut,
         paymentMethod,
         amountPaid,
-        studentUpdated:
-          Object.keys(studentData).length > 0,
       }
     );
 
+    res.json({ enrollment });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ============================================================
+// CORRECTION DES INFORMATIONS APPRENANT
+// PUT /api/v1/enrollments/:id/student
+//
+// Permet de corriger :
+// - nom
+// - prénom
+// - email
+// - téléphone
+//
+// IMPORTANT :
+// Les informations de l'étudiant sont également utilisées lors
+// de la génération de l'attestation.
+// ============================================================
+
+async function updateStudent(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const {
+      nom,
+      prenom,
+      email,
+      telephone,
+    } = req.body;
+
+    if (
+      nom === undefined &&
+      prenom === undefined &&
+      email === undefined &&
+      telephone === undefined
+    ) {
+      return res.status(400).json({
+        error: 'Aucune information à modifier.',
+      });
+    }
+
+    if (
+      email !== undefined &&
+      email !== null &&
+      email !== '' &&
+      !EMAIL_RE.test(email)
+    ) {
+      return res.status(400).json({
+        error: "Format d'email invalide.",
+      });
+    }
+
+    // Récupération de l'inscription
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { id },
+      include: {
+        student: true,
+      },
+    });
+
+    if (!enrollment) {
+      return res.status(404).json({
+        error: 'Inscription introuvable.',
+      });
+    }
+
+    const studentId = enrollment.studentId;
+
+    // Mise à jour de l'apprenant
+    const student = await prisma.student.update({
+      where: {
+        id: studentId,
+      },
+
+      data: {
+        ...(nom !== undefined && {
+          nom: sanitizeText(nom, 100),
+        }),
+
+        ...(prenom !== undefined && {
+          prenom: sanitizeText(prenom, 100),
+        }),
+
+        ...(email !== undefined && {
+          email: email
+            ? sanitizeText(email, 150)
+            : null,
+        }),
+
+        ...(telephone !== undefined && {
+          telephone: telephone
+            ? sanitizeText(telephone, 30)
+            : null,
+        }),
+      },
+    });
+
+    await logAction(
+      req.user?.id,
+      'STUDENT_UPDATED',
+      {
+        enrollmentId: id,
+        studentId,
+        changes: {
+          nom: nom !== undefined,
+          prenom: prenom !== undefined,
+          email: email !== undefined,
+          telephone: telephone !== undefined,
+        },
+      }
+    );
+
+    // Retourner l'inscription complète
+    // avec les nouvelles informations étudiant
+    const updatedEnrollment =
+      await prisma.enrollment.findUnique({
+        where: { id },
+
+        include: {
+          student: true,
+          course: true,
+          session: true,
+          certificate: true,
+        },
+      });
+
     res.json({
       enrollment: updatedEnrollment,
+      student,
     });
   } catch (err) {
     next(err);
   }
 }
 
-// -----------------------------------------------------------------------------
-// DELETE
+// ============================================================
+// SUPPRESSION
 // DELETE /api/v1/enrollments/:id
-// -----------------------------------------------------------------------------
+// ============================================================
 
 async function remove(req, res, next) {
   try {
-    const {
-      id,
-    } = req.params;
+    const { id } = req.params;
 
     await prisma.enrollment.delete({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     await logAction(
@@ -735,14 +456,15 @@ async function remove(req, res, next) {
   }
 }
 
-// -----------------------------------------------------------------------------
+// ============================================================
 // EXPORTS
-// -----------------------------------------------------------------------------
+// ============================================================
 
 module.exports = {
   createPublic,
   createStaff,
   list,
   update,
+  updateStudent,
   remove,
 };
