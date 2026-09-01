@@ -9,8 +9,15 @@ const prisma = require('../config/db');
 const { generateCertificateNumber } = require('../utils/certificateNumber');
 const { logAction } = require('../utils/audit');
 
-const BG_PATH = path.join(__dirname, '../assets/certificate_background.png');
-const SERIF_PATH = path.join(__dirname, '../assets/cormorant-bold.ttf');
+const BG_PATH = path.join(
+  __dirname,
+  '../assets/certificate_background.png'
+);
+
+const SERIF_PATH = path.join(
+  __dirname,
+  '../assets/cormorant-bold.ttf'
+);
 
 const SCALE = 72 / 150;
 const PAGE_W = 1754 * SCALE;
@@ -20,42 +27,14 @@ const SIGNATORY_NAME = 'Kodjo Tsogbe';
 const SIGNATORY_TITLE = 'Directeur de la Formation';
 
 // -----------------------------------------------------------------------------
-// Helpers PDF
+// DATE HELPERS
 // -----------------------------------------------------------------------------
 
-function toPt(pxX, pxY) {
-  return {
-    x: pxX * SCALE,
-    y: PAGE_H - pxY * SCALE,
-  };
-}
-
-function drawCentered(
-  page,
-  text,
-  font,
-  size,
-  pxY,
-  color = rgb(0.06, 0.09, 0.16)
-) {
-  const width = font.widthOfTextAtSize(text, size);
-  const { y } = toPt(0, pxY);
-
-  page.drawText(text, {
-    x: (PAGE_W - width) / 2,
-    y,
-    size,
-    font,
-    color,
-  });
-}
-
 /**
- * Formate une date PostgreSQL @db.Date sans dépendre du timezone
- * du serveur Render.
+ * Formate une date sans dépendre du timezone du serveur Render.
  *
  * Exemple :
- * 2026-08-25 -> 25 août 2026
+ * 2026-08-03 -> 03 août 2026
  */
 function formatDate(date) {
   if (!date) return '';
@@ -87,41 +66,168 @@ function formatDate(date) {
 }
 
 /**
- * Construit la période affichée sur l'attestation.
+ * Retourne le mois et l'année en français.
  *
- * Même jour :
- *   31 août 2026
- *
- * Plusieurs jours :
- *   25 août 2026 — 31 août 2026
+ * Exemple :
+ * 2026-08-03 -> AOÛT 2026
  */
-function formatTrainingPeriod(startDate, endDate) {
-  const start = formatDate(startDate);
+function formatMonthYear(date) {
+  if (!date) return '';
 
-  if (!start) return '';
+  const value = new Date(date);
 
-  const end = formatDate(endDate);
-
-  if (!end) return start;
-
-  const startValue = new Date(startDate);
-  const endValue = new Date(endDate);
-
-  const sameDay =
-    startValue.getUTCFullYear() === endValue.getUTCFullYear() &&
-    startValue.getUTCMonth() === endValue.getUTCMonth() &&
-    startValue.getUTCDate() === endValue.getUTCDate();
-
-  if (sameDay) {
-    return start;
+  if (Number.isNaN(value.getTime())) {
+    return '';
   }
 
-  return `${start} — ${end}`;
+  const months = [
+    'JANVIER',
+    'FÉVRIER',
+    'MARS',
+    'AVRIL',
+    'MAI',
+    'JUIN',
+    'JUILLET',
+    'AOÛT',
+    'SEPTEMBRE',
+    'OCTOBRE',
+    'NOVEMBRE',
+    'DÉCEMBRE',
+  ];
+
+  return `${months[value.getUTCMonth()]} ${value.getUTCFullYear()}`;
 }
 
 /**
- * Dessine un texte en réduisant automatiquement sa taille
- * lorsqu'il dépasse la largeur disponible.
+ * Ajoute exactement un mois à une date.
+ *
+ * Exemple :
+ * 03 août 2026 -> 03 septembre 2026
+ */
+function addOneMonth(date) {
+  const value = new Date(date);
+
+  if (Number.isNaN(value.getTime())) {
+    return null;
+  }
+
+  const year = value.getUTCFullYear();
+  const month = value.getUTCMonth();
+  const day = value.getUTCDate();
+
+  // Calcul du mois suivant.
+  const targetMonth = month + 1;
+
+  // On commence au premier jour du mois cible afin d'éviter
+  // les problèmes liés aux mois de 28/29/30/31 jours.
+  const result = new Date(
+    Date.UTC(
+      year,
+      targetMonth,
+      1
+    )
+  );
+
+  // Nombre de jours du mois cible.
+  const daysInTargetMonth =
+    new Date(
+      Date.UTC(
+        result.getUTCFullYear(),
+        result.getUTCMonth() + 1,
+        0
+      )
+    ).getUTCDate();
+
+  result.setUTCDate(
+    Math.min(day, daysInTargetMonth)
+  );
+
+  return result;
+}
+
+/**
+ * Période de formation affichée sur le certificat.
+ *
+ * Exemple :
+ * startDate = 03/08/2026
+ *
+ * résultat :
+ * AOÛT 2026 — SEPTEMBRE 2026
+ */
+function formatTrainingPeriod(startDate) {
+  if (!startDate) {
+    return '';
+  }
+
+  const endDate = addOneMonth(startDate);
+
+  if (!endDate) {
+    return '';
+  }
+
+  const startMonth = formatMonthYear(startDate);
+  const endMonth = formatMonthYear(endDate);
+
+  return `${startMonth} — ${endMonth}`;
+}
+
+/**
+ * Format date destiné au calcul SHA-256.
+ */
+function formatDateForHash(date) {
+  if (!date) return '';
+
+  const value = new Date(date);
+
+  if (Number.isNaN(value.getTime())) {
+    return '';
+  }
+
+  return value.toISOString().slice(0, 10);
+}
+
+// -----------------------------------------------------------------------------
+// PDF HELPERS
+// -----------------------------------------------------------------------------
+
+function toPt(pxX, pxY) {
+  return {
+    x: pxX * SCALE,
+    y: PAGE_H - pxY * SCALE,
+  };
+}
+
+function drawCentered(
+  page,
+  text,
+  font,
+  size,
+  pxY,
+  color = rgb(0.06, 0.09, 0.16)
+) {
+  if (!text) return;
+
+  const width =
+    font.widthOfTextAtSize(
+      text,
+      size
+    );
+
+  const { y } =
+    toPt(0, pxY);
+
+  page.drawText(text, {
+    x: (PAGE_W - width) / 2,
+    y,
+    size,
+    font,
+    color,
+  });
+}
+
+/**
+ * Dessine un texte avec réduction automatique
+ * de la taille si nécessaire.
  */
 function drawFittedText(
   page,
@@ -144,7 +250,10 @@ function drawFittedText(
 
   while (
     currentSize > minSize &&
-    font.widthOfTextAtSize(text, currentSize) > maxWidth
+    font.widthOfTextAtSize(
+      text,
+      currentSize
+    ) > maxWidth
   ) {
     currentSize -= 0.25;
   }
@@ -162,18 +271,12 @@ function drawFittedText(
 // SHA-256
 // -----------------------------------------------------------------------------
 
-/**
- * Hash actuel des nouveaux certificats.
- *
- * La période de formation est maintenant protégée par le hash.
- */
 function computeCertificateHash({
   numero,
   studentName,
   courseTitle,
   durationHours,
   trainingStartDate,
-  trainingEndDate,
   completionDate,
 }) {
   const payload = [
@@ -182,7 +285,6 @@ function computeCertificateHash({
     courseTitle,
     durationHours,
     formatDateForHash(trainingStartDate),
-    formatDateForHash(trainingEndDate),
     formatDateForHash(completionDate),
   ].join('|');
 
@@ -193,10 +295,10 @@ function computeCertificateHash({
 }
 
 /**
- * Ancienne méthode de hash utilisée avant l'ajout de la période.
+ * Ancienne méthode de hash.
  *
- * Elle est conservée pour que les anciennes attestations restent
- * vérifiables après la migration.
+ * Elle permet de conserver la vérification des attestations
+ * créées avant l'ajout de trainingStartDate.
  */
 function computeLegacyCertificateHash({
   numero,
@@ -219,28 +321,10 @@ function computeLegacyCertificateHash({
     .digest('hex');
 }
 
-function formatDateForHash(date) {
-  if (!date) return '';
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) {
-    return '';
-  }
-
-  return value.toISOString().slice(0, 10);
-}
-
 /**
- * Garantit qu'un certificat possède un hash.
+ * Retourne le hash existant.
  *
- * - Nouveau certificat avec période :
- *   hash nouvelle version.
- *
- * - Ancien certificat sans période :
- *   hash historique.
- *
- * Cela évite de casser les attestations déjà délivrées.
+ * Pour les anciens certificats, on conserve leur hash historique.
  */
 async function ensureHash(certificate) {
   if (certificate.certificateHash) {
@@ -249,37 +333,43 @@ async function ensureHash(certificate) {
 
   let hash;
 
-  if (
-    certificate.trainingStartDate ||
-    certificate.trainingEndDate
-  ) {
+  if (certificate.trainingStartDate) {
     hash = computeCertificateHash({
       numero: certificate.numero,
       studentName: certificate.studentNameSnapshot,
       courseTitle: certificate.courseTitleSnapshot,
       durationHours: certificate.durationHoursSnapshot,
-      trainingStartDate: certificate.trainingStartDate,
-      trainingEndDate: certificate.trainingEndDate,
-      completionDate: certificate.completionDate,
+      trainingStartDate:
+        certificate.trainingStartDate,
+      completionDate:
+        certificate.completionDate,
     });
   } else {
     hash = computeLegacyCertificateHash({
       numero: certificate.numero,
-      studentName: certificate.studentNameSnapshot,
-      courseTitle: certificate.courseTitleSnapshot,
-      durationHours: certificate.durationHoursSnapshot,
-      completionDate: certificate.completionDate,
+      studentName:
+        certificate.studentNameSnapshot,
+      courseTitle:
+        certificate.courseTitleSnapshot,
+      durationHours:
+        certificate.durationHoursSnapshot,
+      completionDate:
+        certificate.completionDate,
     });
   }
 
   try {
     await prisma.certificate.update({
-      where: { id: certificate.id },
-      data: { certificateHash: hash },
+      where: {
+        id: certificate.id,
+      },
+      data: {
+        certificateHash: hash,
+      },
     });
   } catch (err) {
     console.error(
-      'Impossible de sauvegarder le hash rétroactif:',
+      'Impossible de sauvegarder le hash :',
       err.message
     );
   }
@@ -288,7 +378,7 @@ async function ensureHash(certificate) {
 }
 
 // -----------------------------------------------------------------------------
-// Génération PDF
+// GENERATION PDF
 // -----------------------------------------------------------------------------
 
 async function generateCertificatePdf({
@@ -297,23 +387,31 @@ async function generateCertificatePdf({
   durationHours,
   completionDate,
   trainingStartDate,
-  trainingEndDate,
   numero,
   hash,
 }) {
-  const bgBytes = fs.readFileSync(BG_PATH);
+  const bgBytes =
+    fs.readFileSync(BG_PATH);
 
-  const pdfDoc = await PDFDocument.create();
+  const pdfDoc =
+    await PDFDocument.create();
 
   pdfDoc.registerFontkit(fontkit);
 
-  const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+  const page =
+    pdfDoc.addPage([
+      PAGE_W,
+      PAGE_H,
+    ]);
 
   // ---------------------------------------------------------------------------
-  // Background
+  // BACKGROUND
   // ---------------------------------------------------------------------------
 
-  const bgImage = await pdfDoc.embedPng(bgBytes);
+  const bgImage =
+    await pdfDoc.embedPng(
+      bgBytes
+    );
 
   page.drawImage(bgImage, {
     x: 0,
@@ -323,20 +421,33 @@ async function generateCertificatePdf({
   });
 
   // ---------------------------------------------------------------------------
-  // Fonts
+  // FONTS
   // ---------------------------------------------------------------------------
 
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const italic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-  const mono = await pdfDoc.embedFont(StandardFonts.Courier);
+  const bold =
+    await pdfDoc.embedFont(
+      StandardFonts.HelveticaBold
+    );
 
-  const serifBold = await pdfDoc.embedFont(
-    fs.readFileSync(SERIF_PATH)
-  );
+  const regular =
+    await pdfDoc.embedFont(
+      StandardFonts.Helvetica
+    );
+
+  const mono =
+    await pdfDoc.embedFont(
+      StandardFonts.Courier
+    );
+
+  const serifBold =
+    await pdfDoc.embedFont(
+      fs.readFileSync(
+        SERIF_PATH
+      )
+    );
 
   // ---------------------------------------------------------------------------
-  // Nom du candidat
+  // NOM
   // ---------------------------------------------------------------------------
 
   drawCentered(
@@ -349,7 +460,7 @@ async function generateCertificatePdf({
   );
 
   // ---------------------------------------------------------------------------
-  // Formation
+  // FORMATION
   // ---------------------------------------------------------------------------
 
   drawCentered(
@@ -361,74 +472,108 @@ async function generateCertificatePdf({
   );
 
   // ---------------------------------------------------------------------------
-  // N° de certificat
+  // NUMERO
   // ---------------------------------------------------------------------------
 
   const {
     x: numX,
     y: numY,
-  } = toPt(300, 798);
-
-  page.drawText(numero, {
-    x: numX,
-    y: numY,
-    size: 13,
-    font: regular,
-    color: rgb(0.06, 0.09, 0.16),
-  });
-
-  // ---------------------------------------------------------------------------
-  // Date d'obtention
-  // ---------------------------------------------------------------------------
-
-  const dateStr = formatDate(completionDate);
-
-  const {
-    x: dateX,
-    y: dateY,
-  } = toPt(625, 798);
-
-  page.drawText(dateStr, {
-    x: dateX,
-    y: dateY,
-    size: 11,
-    font: regular,
-    color: rgb(0.06, 0.09, 0.16),
-  });
-
-  // ---------------------------------------------------------------------------
-  // Durée
-  // ---------------------------------------------------------------------------
-
-  const {
-    x: dureeX,
-    y: dureeY,
-  } = toPt(1055, 798);
-
-  page.drawText(`${durationHours} heures`, {
-    x: dureeX,
-    y: dureeY,
-    size: 12,
-    font: regular,
-    color: rgb(0.06, 0.09, 0.16),
-  });
-
-  // ---------------------------------------------------------------------------
-  // Période de formation
-  // ---------------------------------------------------------------------------
-
-  const periodeStr = formatTrainingPeriod(
-    trainingStartDate,
-    trainingEndDate
+  } = toPt(
+    300,
+    798
   );
+
+  page.drawText(
+    numero,
+    {
+      x: numX,
+      y: numY,
+      size: 13,
+      font: regular,
+      color: rgb(
+        0.06,
+        0.09,
+        0.16
+      ),
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // DATE D'OBTENTION
+  // ---------------------------------------------------------------------------
+
+  const dateStr =
+    formatDate(
+      completionDate
+    );
+
+  const {
+    x: dateX,
+    y: dateY,
+  } = toPt(
+    625,
+    798
+  );
+
+  page.drawText(
+    dateStr,
+    {
+      x: dateX,
+      y: dateY,
+      size: 11,
+      font: regular,
+      color: rgb(
+        0.06,
+        0.09,
+        0.16
+      ),
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // DUREE
+  // ---------------------------------------------------------------------------
+
+  const {
+    x: dureeX,
+    y: dureeY,
+  } = toPt(
+    1055,
+    798
+  );
+
+  page.drawText(
+    `${durationHours} heures`,
+    {
+      x: dureeX,
+      y: dureeY,
+      size: 12,
+      font: regular,
+      color: rgb(
+        0.06,
+        0.09,
+        0.16
+      ),
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // PERIODE DE FORMATION
+  // ---------------------------------------------------------------------------
+
+  const periodeStr =
+    formatTrainingPeriod(
+      trainingStartDate
+    );
 
   const {
     x: periodeX,
     y: periodeY,
-  } = toPt(1352, 798);
+  } = toPt(
+    1352,
+    798
+  );
 
-  // Largeur disponible approximative de la colonne
-  // entre x=1342 et x=1585 du gabarit.
   const periodeMaxWidth =
     (1585 - 1352) * SCALE;
 
@@ -439,15 +584,20 @@ async function generateCertificatePdf({
     {
       x: periodeX,
       y: periodeY,
-      maxWidth: periodeMaxWidth,
-      size: 11,
-      minSize: 7.5,
-      color: rgb(0.06, 0.09, 0.16),
+      maxWidth:
+        periodeMaxWidth,
+      size: 10,
+      minSize: 6.5,
+      color: rgb(
+        0.06,
+        0.09,
+        0.16
+      ),
     }
   );
 
   // ---------------------------------------------------------------------------
-  // Signature
+  // SIGNATURE
   // ---------------------------------------------------------------------------
 
   const sigNameWidth =
@@ -460,17 +610,26 @@ async function generateCertificatePdf({
     x: sigX,
     y: sigNameY,
   } = toPt(
-    205 + (264 - sigNameWidth) / 2,
+    205 +
+      (264 -
+        sigNameWidth) / 2,
     958
   );
 
-  page.drawText(SIGNATORY_NAME, {
-    x: sigX,
-    y: sigNameY,
-    size: 15,
-    font: bold,
-    color: rgb(0.06, 0.09, 0.16),
-  });
+  page.drawText(
+    SIGNATORY_NAME,
+    {
+      x: sigX,
+      y: sigNameY,
+      size: 15,
+      font: bold,
+      color: rgb(
+        0.06,
+        0.09,
+        0.16
+      ),
+    }
+  );
 
   const sigTitleWidth =
     regular.widthOfTextAtSize(
@@ -482,64 +641,104 @@ async function generateCertificatePdf({
     x: titleX,
     y: titleY,
   } = toPt(
-    205 + (264 - sigTitleWidth) / 2,
+    205 +
+      (264 -
+        sigTitleWidth) / 2,
     1004
   );
 
-  page.drawText(SIGNATORY_TITLE, {
-    x: titleX,
-    y: titleY,
-    size: 11,
-    font: regular,
-    color: rgb(0.4, 0.46, 0.55),
-  });
-
-  // ---------------------------------------------------------------------------
-  // QR Code
-  // ---------------------------------------------------------------------------
-
-  const verifyUrl =
-    `${process.env.FRONTEND_URL}/verifier/${numero}`;
-
-  const qrDataUrl = await QRCode.toDataURL(
-    verifyUrl,
+  page.drawText(
+    SIGNATORY_TITLE,
     {
-      margin: 1,
-      width: 240,
-      color: {
-        dark: '#0F172A',
-        light: '#FFFFFF',
-      },
+      x: titleX,
+      y: titleY,
+      size: 11,
+      font: regular,
+      color: rgb(
+        0.4,
+        0.46,
+        0.55
+      ),
     }
   );
+
+  // ---------------------------------------------------------------------------
+  // QR CODE
+  // ---------------------------------------------------------------------------
+
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    '';
+
+  const verifyUrl =
+    `${frontendUrl}/verifier/${numero}`;
+
+  const qrDataUrl =
+    await QRCode.toDataURL(
+      verifyUrl,
+      {
+        margin: 1,
+        width: 240,
+        color: {
+          dark: '#0F172A',
+          light: '#FFFFFF',
+        },
+      }
+    );
 
   const qrBase64 =
     qrDataUrl.split(',')[1];
 
-  const qrImage = await pdfDoc.embedPng(
-    Buffer.from(qrBase64, 'base64')
-  );
+  const qrImage =
+    await pdfDoc.embedPng(
+      Buffer.from(
+        qrBase64,
+        'base64'
+      )
+    );
 
   const qrSizePx = 135;
   const qrLeftPx = 1465;
   const qrTopPx = 862;
 
-  page.drawImage(qrImage, {
-    x: qrLeftPx * SCALE,
-    y: PAGE_H - (qrTopPx + qrSizePx) * SCALE,
-    width: qrSizePx * SCALE,
-    height: qrSizePx * SCALE,
-  });
+  page.drawImage(
+    qrImage,
+    {
+      x:
+        qrLeftPx *
+        SCALE,
+
+      y:
+        PAGE_H -
+        (qrTopPx +
+          qrSizePx) *
+          SCALE,
+
+      width:
+        qrSizePx *
+        SCALE,
+
+      height:
+        qrSizePx *
+        SCALE,
+    }
+  );
 
   // ---------------------------------------------------------------------------
-  // Empreinte SHA-256
+  // SHA-256
   // ---------------------------------------------------------------------------
 
   const shortHash =
-    `SHA-256 : ${hash.slice(0, 16)}…${hash.slice(-8)}`;
+    `SHA-256 : ${hash.slice(
+      0,
+      16
+    )}…${hash.slice(-8)}`;
 
   const hashWidth =
-    mono.widthOfTextAtSize(shortHash, 6.5);
+    mono.widthOfTextAtSize(
+      shortHash,
+      6.5
+    );
 
   const {
     x: hashX,
@@ -547,27 +746,38 @@ async function generateCertificatePdf({
   } = toPt(
     qrLeftPx +
       qrSizePx / 2 -
-      hashWidth / (2 * SCALE),
+      hashWidth /
+        (2 * SCALE),
     1020
   );
 
-  page.drawText(shortHash, {
-    x: hashX,
-    y: hashY,
-    size: 6.5,
-    font: mono,
-    color: rgb(0.55, 0.6, 0.68),
-  });
+  page.drawText(
+    shortHash,
+    {
+      x: hashX,
+      y: hashY,
+      size: 6.5,
+      font: mono,
+      color: rgb(
+        0.55,
+        0.6,
+        0.68
+      ),
+    }
+  );
 
   return pdfDoc.save();
 }
 
 // -----------------------------------------------------------------------------
-// POST /api/v1/certificates/issue
-// Délivre l'attestation d'une inscription terminée.
+// ISSUE CERTIFICATE
 // -----------------------------------------------------------------------------
 
-async function issue(req, res, next) {
+async function issue(
+  req,
+  res,
+  next
+) {
   try {
     const {
       enrollmentId,
@@ -576,7 +786,8 @@ async function issue(req, res, next) {
 
     if (!enrollmentId) {
       return res.status(400).json({
-        error: "L'identifiant de l'inscription est requis.",
+        error:
+          "L'identifiant de l'inscription est requis.",
       });
     }
 
@@ -585,6 +796,7 @@ async function issue(req, res, next) {
         where: {
           id: enrollmentId,
         },
+
         include: {
           student: true,
           course: true,
@@ -595,7 +807,8 @@ async function issue(req, res, next) {
 
     if (!enrollment) {
       return res.status(404).json({
-        error: 'Inscription introuvable.',
+        error:
+          'Inscription introuvable.',
       });
     }
 
@@ -617,39 +830,38 @@ async function issue(req, res, next) {
     }
 
     // -------------------------------------------------------------------------
-    // Vérification de la session
+    // DATE DE DEBUT DE FORMATION
     // -------------------------------------------------------------------------
 
-    if (!enrollment.session) {
+    if (
+      !enrollment.session ||
+      !enrollment.session.startDate
+    ) {
       return res.status(400).json({
         error:
-          "Impossible de délivrer l'attestation : aucune session de formation n'est associée à cette inscription.",
+          "Impossible de délivrer l'attestation : aucune date de début de formation n'est renseignée pour la session.",
       });
     }
 
-    if (!enrollment.session.startDate) {
-      return res.status(400).json({
-        error:
-          "Impossible de délivrer l'attestation : la date de début de formation n'est pas renseignée.",
-      });
-    }
-
-    if (!enrollment.session.endDate) {
-      return res.status(400).json({
-        error:
-          "Impossible de délivrer l'attestation : la date de fin de formation n'est pas renseignée.",
-      });
-    }
+    const trainingStartDate =
+      enrollment.session.startDate;
 
     // -------------------------------------------------------------------------
-    // Date d'obtention
+    // DATE D'OBTENTION
     // -------------------------------------------------------------------------
 
-    const finalDate = completionDate
-      ? new Date(completionDate)
-      : new Date();
+    const finalDate =
+      completionDate
+        ? new Date(
+            completionDate
+          )
+        : new Date();
 
-    if (Number.isNaN(finalDate.getTime())) {
+    if (
+      Number.isNaN(
+        finalDate.getTime()
+      )
+    ) {
       return res.status(400).json({
         error:
           "La date d'obtention fournie est invalide.",
@@ -657,7 +869,7 @@ async function issue(req, res, next) {
     }
 
     // -------------------------------------------------------------------------
-    // Données de l'étudiant
+    // DONNEES
     // -------------------------------------------------------------------------
 
     const numero =
@@ -665,12 +877,6 @@ async function issue(req, res, next) {
 
     const studentName =
       `${enrollment.student.prenom} ${enrollment.student.nom}`;
-
-    const trainingStartDate =
-      enrollment.session.startDate;
-
-    const trainingEndDate =
-      enrollment.session.endDate;
 
     // -------------------------------------------------------------------------
     // SHA-256
@@ -680,22 +886,24 @@ async function issue(req, res, next) {
       computeCertificateHash({
         numero,
         studentName,
-        courseTitle: enrollment.course.title,
+        courseTitle:
+          enrollment.course.title,
         durationHours:
           enrollment.course.durationHours,
         trainingStartDate,
-        trainingEndDate,
-        completionDate: finalDate,
+        completionDate:
+          finalDate,
       });
 
     // -------------------------------------------------------------------------
-    // Création du certificat
+    // CREATION CERTIFICAT
     // -------------------------------------------------------------------------
 
     const certificate =
       await prisma.certificate.create({
         data: {
           enrollmentId,
+
           numero,
 
           studentNameSnapshot:
@@ -708,22 +916,24 @@ async function issue(req, res, next) {
             enrollment.course.durationHours,
 
           trainingStartDate,
-          trainingEndDate,
 
-          completionDate: finalDate,
+          completionDate:
+            finalDate,
 
-          certificateHash: hash,
+          certificateHash:
+            hash,
         },
       });
 
     // -------------------------------------------------------------------------
-    // Marquer l'inscription comme terminée
+    // COMPLETED
     // -------------------------------------------------------------------------
 
     await prisma.enrollment.update({
       where: {
         id: enrollmentId,
       },
+
       data: {
         statut: 'COMPLETED',
       },
@@ -733,11 +943,15 @@ async function issue(req, res, next) {
       req.user?.id,
       'CERTIFICATE_ISSUED',
       {
-        certificateId: certificate.id,
-        certificateNumber: certificate.numero,
+        certificateId:
+          certificate.id,
+
+        certificateNumber:
+          certificate.numero,
+
         enrollmentId,
+
         trainingStartDate,
-        trainingEndDate,
       }
     );
 
@@ -750,13 +964,18 @@ async function issue(req, res, next) {
 }
 
 // -----------------------------------------------------------------------------
-// GET /api/v1/certificates/:numero/pdf
-// Génère et renvoie le PDF.
+// DOWNLOAD PDF
 // -----------------------------------------------------------------------------
 
-async function downloadPdf(req, res, next) {
+async function downloadPdf(
+  req,
+  res,
+  next
+) {
   try {
-    const { numero } = req.params;
+    const {
+      numero,
+    } = req.params;
 
     const certificate =
       await prisma.certificate.findUnique({
@@ -767,12 +986,15 @@ async function downloadPdf(req, res, next) {
 
     if (!certificate) {
       return res.status(404).json({
-        error: 'Attestation introuvable.',
+        error:
+          'Attestation introuvable.',
       });
     }
 
     const hash =
-      await ensureHash(certificate);
+      await ensureHash(
+        certificate
+      );
 
     const pdfBytes =
       await generateCertificatePdf({
@@ -790,9 +1012,6 @@ async function downloadPdf(req, res, next) {
 
         trainingStartDate:
           certificate.trainingStartDate,
-
-        trainingEndDate:
-          certificate.trainingEndDate,
 
         numero:
           certificate.numero,
@@ -819,13 +1038,18 @@ async function downloadPdf(req, res, next) {
 }
 
 // -----------------------------------------------------------------------------
-// GET /api/v1/certificates/verify/:numero
-// PUBLIC — vérification d'authenticité
+// VERIFY
 // -----------------------------------------------------------------------------
 
-async function verify(req, res, next) {
+async function verify(
+  req,
+  res,
+  next
+) {
   try {
-    const { numero } = req.params;
+    const {
+      numero,
+    } = req.params;
 
     const certificate =
       await prisma.certificate.findUnique({
@@ -837,25 +1061,21 @@ async function verify(req, res, next) {
     if (!certificate) {
       return res.status(404).json({
         valid: false,
+
         error:
           'Aucune attestation ne correspond à ce numéro.',
       });
     }
 
     const currentHash =
-      await ensureHash(certificate);
-
-    // -------------------------------------------------------------------------
-    // Pour les anciens certificats sans période,
-    // on conserve la méthode historique.
-    // Pour les nouveaux, on utilise le hash incluant la période.
-    // -------------------------------------------------------------------------
+      await ensureHash(
+        certificate
+      );
 
     let recomputedHash;
 
     if (
-      certificate.trainingStartDate ||
-      certificate.trainingEndDate
+      certificate.trainingStartDate
     ) {
       recomputedHash =
         computeCertificateHash({
@@ -874,13 +1094,11 @@ async function verify(req, res, next) {
           trainingStartDate:
             certificate.trainingStartDate,
 
-          trainingEndDate:
-            certificate.trainingEndDate,
-
           completionDate:
             certificate.completionDate,
         });
     } else {
+      // Compatibilité avec les anciens certificats.
       recomputedHash =
         computeLegacyCertificateHash({
           numero:
@@ -901,10 +1119,12 @@ async function verify(req, res, next) {
     }
 
     const integrityOk =
-      recomputedHash === currentHash;
+      recomputedHash ===
+      currentHash;
 
     res.json({
       valid: true,
+
       integrityOk,
 
       numero:
@@ -919,20 +1139,14 @@ async function verify(req, res, next) {
       durationHours:
         certificate.durationHoursSnapshot,
 
-      // Nouvelles informations
       trainingStartDate:
         certificate.trainingStartDate,
 
-      trainingEndDate:
-        certificate.trainingEndDate,
-
       trainingPeriod:
         formatTrainingPeriod(
-          certificate.trainingStartDate,
-          certificate.trainingEndDate
+          certificate.trainingStartDate
         ),
 
-      // Date d'obtention
       completionDate:
         certificate.completionDate,
 
@@ -948,11 +1162,14 @@ async function verify(req, res, next) {
 }
 
 // -----------------------------------------------------------------------------
-// GET /api/v1/certificates
-// Liste staff
+// LIST
 // -----------------------------------------------------------------------------
 
-async function list(req, res, next) {
+async function list(
+  req,
+  res,
+  next
+) {
   try {
     const certificates =
       await prisma.certificate.findMany({
@@ -970,7 +1187,7 @@ async function list(req, res, next) {
 }
 
 // -----------------------------------------------------------------------------
-// Exports
+// EXPORTS
 // -----------------------------------------------------------------------------
 
 module.exports = {
