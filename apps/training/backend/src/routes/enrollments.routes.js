@@ -5,6 +5,7 @@ const {
   createStaff,
   list,
   update,
+  updateStudent,
   remove,
 } = require('../controllers/enrollments.controller');
 
@@ -20,10 +21,11 @@ const {
 const router = express.Router();
 
 // ============================================================
-// INSCRIPTION PUBLIQUE
+// PUBLIC
 // ============================================================
-// POST /api/v1/enrollments/public
-// Accessible sans authentification
+
+// Inscription en ligne par l'étudiant
+// Protégée contre le spam
 router.post(
   '/public',
   enrollmentLimiter,
@@ -31,40 +33,69 @@ router.post(
 );
 
 // ============================================================
-// ROUTES STAFF
+// ROUTES PROTÉGÉES
 // ============================================================
-// Toutes les routes suivantes nécessitent une authentification
+
 router.use(authenticate);
 
 // Liste des inscriptions
 router.get(
   '/',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'FINANCE', 'TRAINER']),
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+    'FINANCE',
+    'TRAINER',
+  ]),
   list
 );
 
-// Création d'une inscription par le staff
+// Création d'une inscription par l'équipe
 router.post(
   '/',
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+  ]),
   createStaff
 );
 
 // Modification d'une inscription
+// Statut / paiement / session / notes
 router.put(
   '/:id',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'FINANCE', 'TRAINER']),
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+    'FINANCE',
+    'TRAINER',
+  ]),
   update
 );
 
-// Suppression d'une inscription
+// ============================================================
+// CORRECTION DES INFORMATIONS APPRENANT
+// ============================================================
+
+// Modification du nom, prénom, email et téléphone
+// Seuls SUPER_ADMIN et ADMIN peuvent le faire
+router.put(
+  '/:id/student',
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+  ]),
+  updateStudent
+);
+
+// Suppression
 router.delete(
   '/:id',
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole([
+    'SUPER_ADMIN',
+    'ADMIN',
+  ]),
   remove
 );
 
-// ============================================================
-// EXPORT
-// ============================================================
 module.exports = router;
