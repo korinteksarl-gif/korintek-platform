@@ -201,12 +201,14 @@ async function list(req, res, next) {
 
     const enrollments = await prisma.enrollment.findMany({
       where,
+
       include: {
         student: true,
         course: true,
         session: true,
         certificate: true,
       },
+
       orderBy: {
         createdAt: 'desc',
       },
@@ -302,15 +304,15 @@ async function update(req, res, next) {
 // CORRECTION DES INFORMATIONS APPRENANT
 // PUT /api/v1/enrollments/:id/student
 //
-// Permet de corriger :
+// Modification de :
 // - nom
 // - prénom
 // - email
 // - téléphone
 //
 // IMPORTANT :
-// Les informations de l'étudiant sont également utilisées lors
-// de la génération de l'attestation.
+// Si une attestation existe déjà, son nom est automatiquement
+// synchronisé avec le nouveau nom de l'apprenant.
 // ============================================================
 
 async function updateStudent(req, res, next) {
@@ -323,6 +325,10 @@ async function updateStudent(req, res, next) {
       email,
       telephone,
     } = req.body;
+
+    // ----------------------------------------------------------
+    // Vérification
+    // ----------------------------------------------------------
 
     if (
       nom === undefined &&
@@ -346,11 +352,16 @@ async function updateStudent(req, res, next) {
       });
     }
 
-    // Récupération de l'inscription
+    // ----------------------------------------------------------
+    // Récupérer l'inscription + étudiant + attestation
+    // ----------------------------------------------------------
+
     const enrollment = await prisma.enrollment.findUnique({
       where: { id },
+
       include: {
         student: true,
+        certificate: true,
       },
     });
 
@@ -362,7 +373,10 @@ async function updateStudent(req, res, next) {
 
     const studentId = enrollment.studentId;
 
-    // Mise à jour de l'apprenant
+    // ----------------------------------------------------------
+    // Mise à jour de l'étudiant
+    // ----------------------------------------------------------
+
     const student = await prisma.student.update({
       where: {
         id: studentId,
@@ -391,23 +405,57 @@ async function updateStudent(req, res, next) {
       },
     });
 
+    // ----------------------------------------------------------
+    // NOUVEAU NOM COMPLET
+    // ----------------------------------------------------------
+
+    const studentNameSnapshot =
+      `${student.prenom} ${student.nom}`.trim();
+
+    // ----------------------------------------------------------
+    // SYNCHRONISATION DE L'ATTESTATION
+    // ----------------------------------------------------------
+
+    if (enrollment.certificate) {
+      await prisma.certificate.update({
+        where: {
+          id: enrollment.certificate.id,
+        },
+
+        data: {
+          studentNameSnapshot,
+        },
+      });
+    }
+
+    // ----------------------------------------------------------
+    // AUDIT
+    // ----------------------------------------------------------
+
     await logAction(
       req.user?.id,
       'STUDENT_UPDATED',
       {
         enrollmentId: id,
         studentId,
+
         changes: {
           nom: nom !== undefined,
           prenom: prenom !== undefined,
           email: email !== undefined,
           telephone: telephone !== undefined,
         },
+
+        certificateUpdated: Boolean(
+          enrollment.certificate
+        ),
       }
     );
 
+    // ----------------------------------------------------------
     // Retourner l'inscription complète
-    // avec les nouvelles informations étudiant
+    // ----------------------------------------------------------
+
     const updatedEnrollment =
       await prisma.enrollment.findUnique({
         where: { id },
@@ -424,6 +472,7 @@ async function updateStudent(req, res, next) {
       enrollment: updatedEnrollment,
       student,
     });
+
   } catch (err) {
     next(err);
   }
