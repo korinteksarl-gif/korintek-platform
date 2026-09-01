@@ -99,27 +99,22 @@ function formatMonthYear(date) {
  * 03 août 2026 -> 03 septembre 2026
  */
 function addOneMonth(date) {
+  if (!date) return null;
+
   const value = new Date(date);
 
   if (Number.isNaN(value.getTime())) {
     return null;
   }
 
-  const year = value.getUTCFullYear();
-  const month = value.getUTCMonth();
-  const day = value.getUTCDate();
+  const result = new Date(value);
 
-  const targetMonth = month + 1;
+  const originalDay = result.getUTCDate();
 
-  const result = new Date(
-    Date.UTC(
-      year,
-      targetMonth,
-      1
-    )
-  );
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() + 1);
 
-  const daysInTargetMonth = new Date(
+  const lastDayOfTargetMonth = new Date(
     Date.UTC(
       result.getUTCFullYear(),
       result.getUTCMonth() + 1,
@@ -128,37 +123,39 @@ function addOneMonth(date) {
   ).getUTCDate();
 
   result.setUTCDate(
-    Math.min(day, daysInTargetMonth)
+    Math.min(
+      originalDay,
+      lastDayOfTargetMonth
+    )
   );
 
   return result;
 }
 
 /**
- * Période de formation affichée sur le certificat.
+ * Retourne une période lisible.
  *
  * Exemple :
- * 03 août 2026 -> AOÛT 2026 — SEPTEMBRE 2026
+ * AOÛT 2026 → SEPTEMBRE 2026
  */
 function formatTrainingPeriod(startDate) {
-  if (!startDate) {
-    return '';
-  }
+  if (!startDate) return '';
 
+  const start = formatMonthYear(startDate);
   const endDate = addOneMonth(startDate);
+  const end = formatMonthYear(endDate);
 
-  if (!endDate) {
-    return '';
+  if (!start) return '';
+
+  if (!end) {
+    return start;
   }
 
-  const startMonth = formatMonthYear(startDate);
-  const endMonth = formatMonthYear(endDate);
-
-  return `${startMonth} — ${endMonth}`;
+  return `${start} → ${end}`;
 }
 
 /**
- * Format date pour le SHA-256.
+ * Format utilisé dans le hash.
  */
 function formatDateForHash(date) {
   if (!date) return '';
@@ -188,22 +185,19 @@ function drawCentered(
   text,
   font,
   size,
-  pxY,
-  color = rgb(0.06, 0.09, 0.16)
+  y,
+  color = rgb(0, 0, 0)
 ) {
-  if (!text) return;
+  const width = font.widthOfTextAtSize(
+    text,
+    size
+  );
 
-  const width =
-    font.widthOfTextAtSize(
-      text,
-      size
-    );
-
-  const { y } =
-    toPt(0, pxY);
+  const x =
+    (PAGE_W - width) / 2;
 
   page.drawText(text, {
-    x: (PAGE_W - width) / 2,
+    x,
     y,
     size,
     font,
@@ -211,27 +205,18 @@ function drawCentered(
   });
 }
 
-/**
- * Dessine un texte avec réduction automatique
- * de la taille si nécessaire.
- */
-function drawFittedText(
+function drawFittedText({
   page,
   text,
   font,
-  options = {}
-) {
-  const {
-    x,
-    y,
-    maxWidth,
-    size = 11,
-    minSize = 7,
-    color = rgb(0.06, 0.09, 0.16),
-  } = options;
-
-  if (!text) return;
-
+  x,
+  y,
+  maxWidth,
+  size,
+  minSize = 10,
+  color = rgb(0, 0, 0),
+  align = 'left',
+}) {
   let currentSize = size;
 
   while (
@@ -241,16 +226,39 @@ function drawFittedText(
       currentSize
     ) > maxWidth
   ) {
-    currentSize -= 0.25;
+    currentSize -= 0.5;
+  }
+
+  const currentWidth =
+    font.widthOfTextAtSize(
+      text,
+      currentSize
+    );
+
+  let currentX = x;
+
+  if (align === 'center') {
+    currentX =
+      x + (maxWidth - currentWidth) / 2;
+  }
+
+  if (align === 'right') {
+    currentX =
+      x + maxWidth - currentWidth;
   }
 
   page.drawText(text, {
-    x,
+    x: currentX,
     y,
     size: currentSize,
     font,
     color,
   });
+
+  return {
+    size: currentSize,
+    width: currentWidth,
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -308,50 +316,92 @@ function computeLegacyCertificateHash({
 }
 
 /**
- * Retourne le hash existant.
+ * Retourne le hash du certificat.
  *
- * Pour les anciens certificats, on conserve leur hash historique.
+ * IMPORTANT :
+ * Si un studentName est fourni, celui-ci devient la source
+ * de vérité. Cela permet de corriger les anciennes attestations
+ * lorsque le nom/prénom de l'apprenant a été modifié.
  */
-async function ensureHash(certificate) {
-  if (certificate.certificateHash) {
-    return certificate.certificateHash;
-  }
+async function ensureHash(
+  certificate,
+  studentName = null
+) {
+  const effectiveStudentName =
+    studentName ||
+    certificate.studentNameSnapshot;
 
   let hash;
 
   if (certificate.trainingStartDate) {
     hash = computeCertificateHash({
       numero: certificate.numero,
-      studentName: certificate.studentNameSnapshot,
-      courseTitle: certificate.courseTitleSnapshot,
-      durationHours: certificate.durationHoursSnapshot,
-      trainingStartDate: certificate.trainingStartDate,
-      completionDate: certificate.completionDate,
+
+      studentName:
+        effectiveStudentName,
+
+      courseTitle:
+        certificate.courseTitleSnapshot,
+
+      durationHours:
+        certificate.durationHoursSnapshot,
+
+      trainingStartDate:
+        certificate.trainingStartDate,
+
+      completionDate:
+        certificate.completionDate,
     });
   } else {
-    hash = computeLegacyCertificateHash({
-      numero: certificate.numero,
-      studentName: certificate.studentNameSnapshot,
-      courseTitle: certificate.courseTitleSnapshot,
-      durationHours: certificate.durationHoursSnapshot,
-      completionDate: certificate.completionDate,
-    });
+    // Compatibilité avec les anciens certificats.
+    hash =
+      computeLegacyCertificateHash({
+        numero: certificate.numero,
+
+        studentName:
+          effectiveStudentName,
+
+        courseTitle:
+          certificate.courseTitleSnapshot,
+
+        durationHours:
+          certificate.durationHoursSnapshot,
+
+        completionDate:
+          certificate.completionDate,
+      });
   }
 
-  try {
-    await prisma.certificate.update({
-      where: {
-        id: certificate.id,
-      },
-      data: {
-        certificateHash: hash,
-      },
-    });
-  } catch (err) {
-    console.error(
-      'Impossible de sauvegarder le hash :',
-      err.message
-    );
+  /*
+   * Si le nom a été corrigé dans Student, ou si le hash
+   * n'est plus cohérent, on synchronise le certificat.
+   */
+  if (
+    certificate.studentNameSnapshot !==
+      effectiveStudentName ||
+    certificate.certificateHash !==
+      hash
+  ) {
+    try {
+      await prisma.certificate.update({
+        where: {
+          id: certificate.id,
+        },
+
+        data: {
+          studentNameSnapshot:
+            effectiveStudentName,
+
+          certificateHash:
+            hash,
+        },
+      });
+    } catch (err) {
+      console.error(
+        'Impossible de synchroniser le certificat :',
+        err.message
+      );
+    }
   }
 
   return hash;
@@ -370,9 +420,6 @@ async function generateCertificatePdf({
   numero,
   hash,
 }) {
-  const bgBytes =
-    fs.readFileSync(BG_PATH);
-
   const pdfDoc =
     await PDFDocument.create();
 
@@ -388,368 +435,370 @@ async function generateCertificatePdf({
   // BACKGROUND
   // ---------------------------------------------------------------------------
 
-  const bgImage =
-    await pdfDoc.embedPng(
-      bgBytes
-    );
+  if (fs.existsSync(BG_PATH)) {
+    const backgroundBytes =
+      fs.readFileSync(BG_PATH);
 
-  page.drawImage(bgImage, {
-    x: 0,
-    y: 0,
-    width: PAGE_W,
-    height: PAGE_H,
-  });
+    const backgroundImage =
+      await pdfDoc.embedPng(
+        backgroundBytes
+      );
+
+    page.drawImage(
+      backgroundImage,
+      {
+        x: 0,
+        y: 0,
+        width: PAGE_W,
+        height: PAGE_H,
+      }
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // FONTS
   // ---------------------------------------------------------------------------
 
-  const bold =
+  const serifFontBytes =
+    fs.readFileSync(SERIF_PATH);
+
+  const serifFont =
     await pdfDoc.embedFont(
-      StandardFonts.HelveticaBold
+      serifFontBytes
     );
 
-  const regular =
+  const regularFont =
     await pdfDoc.embedFont(
       StandardFonts.Helvetica
     );
 
-  const mono =
+  const boldFont =
     await pdfDoc.embedFont(
-      StandardFonts.Courier
-    );
-
-  const serifBold =
-    await pdfDoc.embedFont(
-      fs.readFileSync(
-        SERIF_PATH
-      )
+      StandardFonts.HelveticaBold
     );
 
   // ---------------------------------------------------------------------------
-  // NOM
+  // COLORS
+  // ---------------------------------------------------------------------------
+
+  const navy =
+    rgb(
+      15 / 255,
+      23 / 255,
+      42 / 255
+    );
+
+  const teal =
+    rgb(
+      0 / 255,
+      186 / 255,
+      210 / 255
+    );
+
+  const slate =
+    rgb(
+      71 / 255,
+      85 / 255,
+      105 / 255
+    );
+
+  // ---------------------------------------------------------------------------
+  // TITLE
   // ---------------------------------------------------------------------------
 
   drawCentered(
     page,
-    studentName,
-    serifBold,
-    30,
-    516,
-    rgb(0, 0.42, 0.5)
+    'ATTESTATION DE FORMATION',
+    boldFont,
+    27,
+    PAGE_H - 205 * SCALE,
+    navy
   );
 
   // ---------------------------------------------------------------------------
-  // FORMATION
+  // INTRODUCTION
+  // ---------------------------------------------------------------------------
+
+  const intro =
+    'KORINTEK SARL atteste que';
+
+  drawCentered(
+    page,
+    intro,
+    regularFont,
+    12,
+    PAGE_H - 270 * SCALE,
+    slate
+  );
+
+  // ---------------------------------------------------------------------------
+  // STUDENT NAME
+  // ---------------------------------------------------------------------------
+
+  drawFittedText({
+    page,
+
+    text:
+      studentName || '',
+
+    font:
+      serifFont,
+
+    x:
+      150 * SCALE,
+
+    y:
+      PAGE_H - 335 * SCALE,
+
+    maxWidth:
+      PAGE_W - 300 * SCALE,
+
+    size:
+      31,
+
+    minSize:
+      20,
+
+    color:
+      navy,
+
+    align:
+      'center',
+  });
+
+  // ---------------------------------------------------------------------------
+  // COURSE
   // ---------------------------------------------------------------------------
 
   drawCentered(
     page,
-    courseTitle,
-    bold,
-    20,
-    645
+    'a suivi avec succès la formation',
+    regularFont,
+    12,
+    PAGE_H - 390 * SCALE,
+    slate
   );
 
-  // ---------------------------------------------------------------------------
-  // NUMERO
-  // ---------------------------------------------------------------------------
-
-  const {
-    x: numX,
-    y: numY,
-  } = toPt(
-    300,
-    798
-  );
-
-  page.drawText(
-    numero,
-    {
-      x: numX,
-      y: numY,
-      size: 13,
-      font: regular,
-      color: rgb(
-        0.06,
-        0.09,
-        0.16
-      ),
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // DATE D'OBTENTION
-  // ---------------------------------------------------------------------------
-
-  const dateStr =
-    formatDate(
-      completionDate
-    );
-
-  const {
-    x: dateX,
-    y: dateY,
-  } = toPt(
-    625,
-    798
-  );
-
-  page.drawText(
-    dateStr,
-    {
-      x: dateX,
-      y: dateY,
-      size: 11,
-      font: regular,
-      color: rgb(
-        0.06,
-        0.09,
-        0.16
-      ),
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // DUREE
-  // ---------------------------------------------------------------------------
-
-  const {
-    x: dureeX,
-    y: dureeY,
-  } = toPt(
-    1055,
-    798
-  );
-
-  page.drawText(
-    `${durationHours} heures`,
-    {
-      x: dureeX,
-      y: dureeY,
-      size: 12,
-      font: regular,
-      color: rgb(
-        0.06,
-        0.09,
-        0.16
-      ),
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // PERIODE DE FORMATION
-  // ---------------------------------------------------------------------------
-
-  const periodeStr =
-    formatTrainingPeriod(
-      trainingStartDate
-    );
-
-  const {
-    x: periodeX,
-    y: periodeY,
-  } = toPt(
-    1352,
-    798
-  );
-
-  const periodeMaxWidth =
-    (1585 - 1352) * SCALE;
-
-  drawFittedText(
+  drawFittedText({
     page,
-    periodeStr,
-    regular,
-    {
-      x: periodeX,
-      y: periodeY,
-      maxWidth: periodeMaxWidth,
-      size: 10,
-      minSize: 6.5,
-      color: rgb(
-        0.06,
-        0.09,
-        0.16
-      ),
-    }
+
+    text:
+      courseTitle || '',
+
+    font:
+      boldFont,
+
+    x:
+      180 * SCALE,
+
+    y:
+      PAGE_H - 445 * SCALE,
+
+    maxWidth:
+      PAGE_W - 360 * SCALE,
+
+    size:
+      19,
+
+    minSize:
+      12,
+
+    color:
+      teal,
+
+    align:
+      'center',
+  });
+
+  // ---------------------------------------------------------------------------
+  // DURATION
+  // ---------------------------------------------------------------------------
+
+  const durationText =
+    `${durationHours || 0} heures`;
+
+  drawCentered(
+    page,
+    durationText,
+    regularFont,
+    12,
+    PAGE_H - 495 * SCALE,
+    slate
   );
 
   // ---------------------------------------------------------------------------
-  // SIGNATURE
+  // TRAINING PERIOD
   // ---------------------------------------------------------------------------
 
-  const sigNameWidth =
-    bold.widthOfTextAtSize(
-      SIGNATORY_NAME,
-      15
+  if (trainingStartDate) {
+    const period =
+      formatTrainingPeriod(
+        trainingStartDate
+      );
+
+    drawCentered(
+      page,
+      `Période : ${period}`,
+      regularFont,
+      11,
+      PAGE_H - 535 * SCALE,
+      slate
     );
+  }
 
-  const {
-    x: sigX,
-    y: sigNameY,
-  } = toPt(
-    205 +
-      (264 -
-        sigNameWidth) / 2,
-    958
+  // ---------------------------------------------------------------------------
+  // COMPLETION DATE
+  // ---------------------------------------------------------------------------
+
+  drawCentered(
+    page,
+    `Délivrée le ${formatDate(completionDate)}`,
+    regularFont,
+    11,
+    PAGE_H - 575 * SCALE,
+    slate
   );
 
-  page.drawText(
+  // ---------------------------------------------------------------------------
+  // CERTIFICATE NUMBER
+  // ---------------------------------------------------------------------------
+
+  drawCentered(
+    page,
+    `N° ${numero}`,
+    boldFont,
+    11,
+    PAGE_H - 625 * SCALE,
+    navy
+  );
+
+  // ---------------------------------------------------------------------------
+  // SIGNATORY
+  // ---------------------------------------------------------------------------
+
+  const signatureY =
+    PAGE_H - 730 * SCALE;
+
+  drawCentered(
+    page,
     SIGNATORY_NAME,
-    {
-      x: sigX,
-      y: sigNameY,
-      size: 15,
-      font: bold,
-      color: rgb(
-        0.06,
-        0.09,
-        0.16
-      ),
-    }
+    boldFont,
+    13,
+    signatureY,
+    navy
   );
 
-  const sigTitleWidth =
-    regular.widthOfTextAtSize(
-      SIGNATORY_TITLE,
-      11
-    );
-
-  const {
-    x: titleX,
-    y: titleY,
-  } = toPt(
-    205 +
-      (264 -
-        sigTitleWidth) / 2,
-    1004
-  );
-
-  page.drawText(
+  drawCentered(
+    page,
     SIGNATORY_TITLE,
-    {
-      x: titleX,
-      y: titleY,
-      size: 11,
-      font: regular,
-      color: rgb(
-        0.4,
-        0.46,
-        0.55
-      ),
-    }
+    regularFont,
+    10,
+    signatureY - 20,
+    slate
   );
 
   // ---------------------------------------------------------------------------
   // QR CODE
   // ---------------------------------------------------------------------------
 
-  const frontendUrl =
-    process.env.FRONTEND_URL ||
-    '';
+  if (numero) {
+    const verificationBaseUrl =
+      process.env.FRONTEND_URL ||
+      'https://korintek-training-frontend.onrender.com';
 
-  const verifyUrl =
-    `${frontendUrl}/verifier/${numero}`;
+    const verificationUrl =
+      `${verificationBaseUrl}/verifier?numero=${encodeURIComponent(numero)}`;
 
-  const qrDataUrl =
-    await QRCode.toDataURL(
-      verifyUrl,
+    try {
+      const qrDataUrl =
+        await QRCode.toDataURL(
+          verificationUrl,
+          {
+            margin: 1,
+            width: 220,
+            errorCorrectionLevel: 'M',
+          }
+        );
+
+      const qrBase64 =
+        qrDataUrl.split(',')[1];
+
+      const qrBytes =
+        Buffer.from(
+          qrBase64,
+          'base64'
+        );
+
+      const qrImage =
+        await pdfDoc.embedPng(
+          qrBytes
+        );
+
+      const qrSize =
+        100 * SCALE;
+
+      page.drawImage(
+        qrImage,
+        {
+          x:
+            PAGE_W -
+            qrSize -
+            95 * SCALE,
+
+          y:
+            80 * SCALE,
+
+          width:
+            qrSize,
+
+          height:
+            qrSize,
+        }
+      );
+    } catch (err) {
+      console.error(
+        'Impossible de générer le QR code :',
+        err.message
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // HASH
+  // ---------------------------------------------------------------------------
+
+  if (hash) {
+    const shortHash =
+      hash.length > 24
+        ? hash.substring(0, 24)
+        : hash;
+
+    page.drawText(
+      `SHA-256 : ${shortHash}`,
       {
-        margin: 1,
-        width: 240,
-        color: {
-          dark: '#0F172A',
-          light: '#FFFFFF',
-        },
+        x:
+          90 * SCALE,
+
+        y:
+          75 * SCALE,
+
+        size:
+          7,
+
+        font:
+          regularFont,
+
+        color:
+          slate,
       }
     );
+  }
 
-  const qrBase64 =
-    qrDataUrl.split(',')[1];
-
-  const qrImage =
-    await pdfDoc.embedPng(
-      Buffer.from(
-        qrBase64,
-        'base64'
-      )
-    );
-
-  const qrSizePx = 135;
-  const qrLeftPx = 1465;
-  const qrTopPx = 862;
-
-  page.drawImage(
-    qrImage,
-    {
-      x:
-        qrLeftPx *
-        SCALE,
-
-      y:
-        PAGE_H -
-        (qrTopPx +
-          qrSizePx) *
-          SCALE,
-
-      width:
-        qrSizePx *
-        SCALE,
-
-      height:
-        qrSizePx *
-        SCALE,
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // SHA-256
-  // ---------------------------------------------------------------------------
-
-  const shortHash =
-    `SHA-256 : ${hash.slice(
-      0,
-      16
-    )}…${hash.slice(-8)}`;
-
-  const hashWidth =
-    mono.widthOfTextAtSize(
-      shortHash,
-      6.5
-    );
-
-  const {
-    x: hashX,
-    y: hashY,
-  } = toPt(
-    qrLeftPx +
-      qrSizePx / 2 -
-      hashWidth /
-        (2 * SCALE),
-    1020
-  );
-
-  page.drawText(
-    shortHash,
-    {
-      x: hashX,
-      y: hashY,
-      size: 6.5,
-      font: mono,
-      color: rgb(
-        0.55,
-        0.6,
-        0.68
-      ),
-    }
-  );
-
-  return pdfDoc.save();
+  return await pdfDoc.save();
 }
 
 // -----------------------------------------------------------------------------
-// ISSUE CERTIFICATE
+// ISSUE
 // -----------------------------------------------------------------------------
 
 async function issue(
@@ -779,6 +828,7 @@ async function issue(
         where: {
           id: enrollmentId,
         },
+
         include: {
           student: true,
           course: true,
@@ -823,8 +873,6 @@ async function issue(
     // 1. session explicitement associée à l'inscription
     // 2. sinon première session active de la formation
     //
-    // Cela permet notamment de délivrer les attestations des anciennes
-    // inscriptions qui ont été créées avant l'association à une session.
     // -------------------------------------------------------------------------
 
     let trainingSession =
@@ -836,10 +884,14 @@ async function issue(
           where: {
             courseId:
               enrollment.courseId,
-            active: true,
+
+            active:
+              true,
           },
+
           orderBy: {
-            startDate: 'asc',
+            startDate:
+              'asc',
           },
         });
     }
@@ -898,12 +950,17 @@ async function issue(
     const hash =
       computeCertificateHash({
         numero,
+
         studentName,
+
         courseTitle:
           enrollment.course.title,
+
         durationHours:
           enrollment.course.durationHours,
+
         trainingStartDate,
+
         completionDate:
           finalDate,
       });
@@ -944,16 +1001,21 @@ async function issue(
 
     await prisma.enrollment.update({
       where: {
-        id: enrollmentId,
+        id:
+          enrollmentId,
       },
+
       data: {
-        statut: 'COMPLETED',
+        statut:
+          'COMPLETED',
       },
     });
 
     await logAction(
       req.user?.id,
+
       'CERTIFICATE_ISSUED',
+
       {
         certificateId:
           certificate.id,
@@ -994,10 +1056,25 @@ async function downloadPdf(
       numero,
     } = req.params;
 
+    /*
+     * IMPORTANT :
+     * On récupère l'apprenant actuel via Enrollment -> Student.
+     *
+     * Cela permet aux anciennes attestations de prendre en compte
+     * une correction de nom/prénom effectuée après leur création.
+     */
     const certificate =
       await prisma.certificate.findUnique({
         where: {
           numero,
+        },
+
+        include: {
+          enrollment: {
+            include: {
+              student: true,
+            },
+          },
         },
       });
 
@@ -1008,15 +1085,36 @@ async function downloadPdf(
       });
     }
 
+    // -------------------------------------------------------------------------
+    // NOM ACTUEL DE L'APPRENANT
+    // -------------------------------------------------------------------------
+
+    const currentStudent =
+      certificate.enrollment?.student;
+
+    const currentStudentName =
+      currentStudent
+        ? `${currentStudent.prenom || ''} ${currentStudent.nom || ''}`.trim()
+        : certificate.studentNameSnapshot;
+
+    // -------------------------------------------------------------------------
+    // HASH
+    // -------------------------------------------------------------------------
+
     const hash =
       await ensureHash(
-        certificate
+        certificate,
+        currentStudentName
       );
+
+    // -------------------------------------------------------------------------
+    // GENERATION PDF
+    // -------------------------------------------------------------------------
 
     const pdfBytes =
       await generateCertificatePdf({
         studentName:
-          certificate.studentNameSnapshot,
+          currentStudentName,
 
         courseTitle:
           certificate.courseTitleSnapshot,
@@ -1068,25 +1166,58 @@ async function verify(
       numero,
     } = req.params;
 
+    /*
+     * On récupère également l'apprenant actuel.
+     */
     const certificate =
       await prisma.certificate.findUnique({
         where: {
           numero,
+        },
+
+        include: {
+          enrollment: {
+            include: {
+              student: true,
+            },
+          },
         },
       });
 
     if (!certificate) {
       return res.status(404).json({
         valid: false,
+
         error:
           'Aucune attestation ne correspond à ce numéro.',
       });
     }
 
+    // -------------------------------------------------------------------------
+    // NOM ACTUEL
+    // -------------------------------------------------------------------------
+
+    const currentStudent =
+      certificate.enrollment?.student;
+
+    const currentStudentName =
+      currentStudent
+        ? `${currentStudent.prenom || ''} ${currentStudent.nom || ''}`.trim()
+        : certificate.studentNameSnapshot;
+
+    // -------------------------------------------------------------------------
+    // HASH ACTUEL
+    // -------------------------------------------------------------------------
+
     const currentHash =
       await ensureHash(
-        certificate
+        certificate,
+        currentStudentName
       );
+
+    // -------------------------------------------------------------------------
+    // RECALCUL
+    // -------------------------------------------------------------------------
 
     let recomputedHash;
 
@@ -1099,7 +1230,7 @@ async function verify(
             certificate.numero,
 
           studentName:
-            certificate.studentNameSnapshot,
+            currentStudentName,
 
           courseTitle:
             certificate.courseTitleSnapshot,
@@ -1121,7 +1252,7 @@ async function verify(
             certificate.numero,
 
           studentName:
-            certificate.studentNameSnapshot,
+            currentStudentName,
 
           courseTitle:
             certificate.courseTitleSnapshot,
@@ -1138,16 +1269,59 @@ async function verify(
       recomputedHash ===
       currentHash;
 
+    // -------------------------------------------------------------------------
+    // SYNCHRONISATION
+    // -------------------------------------------------------------------------
+
+    if (
+      certificate.studentNameSnapshot !==
+        currentStudentName ||
+      certificate.certificateHash !==
+        recomputedHash
+    ) {
+      try {
+        await prisma.certificate.update({
+          where: {
+            id:
+              certificate.id,
+          },
+
+          data: {
+            studentNameSnapshot:
+              currentStudentName,
+
+            certificateHash:
+              recomputedHash,
+          },
+        });
+      } catch (err) {
+        console.error(
+          'Impossible de synchroniser le certificat après vérification :',
+          err.message
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // REPONSE
+    // -------------------------------------------------------------------------
+
     res.json({
-      valid: true,
+      valid:
+        true,
 
       integrityOk,
 
       numero:
         certificate.numero,
 
+      /*
+       * IMPORTANT :
+       * Le nom retourné est maintenant celui de Student,
+       * donc le nom corrigé.
+       */
       studentName:
-        certificate.studentNameSnapshot,
+        currentStudentName,
 
       courseTitle:
         certificate.courseTitleSnapshot,
@@ -1170,7 +1344,7 @@ async function verify(
         certificate.issuedAt,
 
       certificateHash:
-        currentHash,
+        recomputedHash,
     });
   } catch (err) {
     next(err);
@@ -1190,12 +1364,45 @@ async function list(
     const certificates =
       await prisma.certificate.findMany({
         orderBy: {
-          issuedAt: 'desc',
+          issuedAt:
+            'desc',
+        },
+
+        include: {
+          enrollment: {
+            include: {
+              student: true,
+            },
+          },
         },
       });
 
+    /*
+     * On expose le nom actuel dans la liste également.
+     */
+    const result =
+      certificates.map(
+        (certificate) => {
+          const student =
+            certificate.enrollment?.student;
+
+          const currentStudentName =
+            student
+              ? `${student.prenom || ''} ${student.nom || ''}`.trim()
+              : certificate.studentNameSnapshot;
+
+          return {
+            ...certificate,
+
+            studentName:
+              currentStudentName,
+          };
+        }
+      );
+
     res.json({
-      certificates,
+      certificates:
+        result,
     });
   } catch (err) {
     next(err);
