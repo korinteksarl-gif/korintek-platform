@@ -1,8 +1,10 @@
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+
 const authRoutes = require('./routes/auth.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const enrollmentsRoutes = require('./routes/enrollments.routes');
@@ -10,23 +12,87 @@ const certificatesRoutes = require('./routes/certificates.routes');
 const usersRoutes = require('./routes/users.routes');
 const auditRoutes = require('./routes/audit.routes');
 const trainersRoutes = require('./routes/trainers.routes');
+
 const errorHandler = require('./middleware/errorHandler');
+
 const app = express();
+
+// ============================================================
+// MIDDLEWARES
+// ============================================================
+
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: '1mb' }));
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'korintek-training-api' }));
+
+app.use(
+  morgan(
+    process.env.NODE_ENV === 'production'
+      ? 'combined'
+      : 'dev'
+  )
+);
+
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'korintek-training-api',
+  });
+});
+
+// ============================================================
+// API ROUTES
+// ============================================================
+
 app.use('/api/v1/auth', authRoutes);
+
 app.use('/api/v1/courses', coursesRoutes);
+
 app.use('/api/v1/enrollments', enrollmentsRoutes);
+
 app.use('/api/v1/certificates', certificatesRoutes);
+
 app.use('/api/v1/users', usersRoutes);
+
 app.use('/api/v1/audit', auditRoutes);
+
 app.use('/api/v1/trainers', trainersRoutes);
-app.use((req, res) => res.status(404).json({ error: 'Route introuvable.' }));
+
+// ============================================================
+// 404
+// ============================================================
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Route introuvable.',
+  });
+});
+
+// ============================================================
+// ERROR HANDLER
+// ============================================================
+
 app.use(errorHandler);
+
+// ============================================================
+// SERVER
+// ============================================================
+
 const PORT = process.env.PORT || 4000;
+
 app.listen(PORT, () => {
-  console.log(`KORINTEK Training API démarrée sur le port ${PORT}`);
+  console.log(
+    `KORINTEK Training API démarrée sur le port ${PORT}`
+  );
 });
