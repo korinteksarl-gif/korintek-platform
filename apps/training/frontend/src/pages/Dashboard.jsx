@@ -37,55 +37,71 @@ export default function Dashboard() {
     amountPaid: '',
   });
 
-  // ==========================================================
-  // PAIEMENT
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // PAYMENT EDIT
+  // ---------------------------------------------------------------------------
 
-  const [editingPaymentId, setEditingPaymentId] = useState(null);
-  const [editAmount, setEditAmount] = useState('');
+  const [editingPaymentId, setEditingPaymentId] =
+    useState(null);
 
-  // ==========================================================
-  // APPRENANT
-  // ==========================================================
+  const [editAmount, setEditAmount] =
+    useState('');
 
-  const [editingStudentId, setEditingStudentId] = useState(null);
+  // ---------------------------------------------------------------------------
+  // STUDENT EDIT
+  // ---------------------------------------------------------------------------
 
-  const [studentForm, setStudentForm] = useState({
-    nom: '',
-    prenom: '',
-    email: '',
-    telephone: '',
-  });
+  const [editingStudentId, setEditingStudentId] =
+    useState(null);
 
-  const [savingStudent, setSavingStudent] = useState(false);
+  const [editStudent, setEditStudent] =
+    useState({
+      nom: '',
+      prenom: '',
+      email: '',
+      telephone: '',
+    });
+
+  const [savingStudent, setSavingStudent] =
+    useState(false);
 
   const navigate = useNavigate();
 
   const user = JSON.parse(
-    localStorage.getItem('korintek_training_user') || 'null'
+    localStorage.getItem(
+      'korintek_training_user'
+    ) || 'null'
   );
 
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isSuperAdmin =
+    user?.role === 'SUPER_ADMIN';
 
-  const canEditStudent =
-    user?.role === 'SUPER_ADMIN' ||
-    user?.role === 'ADMIN';
-
-  // ==========================================================
-  // CHARGEMENT
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // LOAD
+  // ---------------------------------------------------------------------------
 
   async function load() {
     try {
-      const [enrRes, courseRes] = await Promise.all([
+      const [
+        enrRes,
+        courseRes,
+      ] = await Promise.all([
         apiClient.get('/enrollments'),
         apiClient.get('/courses'),
       ]);
 
-      setEnrollments(enrRes.data.enrollments);
-      setCourses(courseRes.data.courses);
+      setEnrollments(
+        enrRes.data.enrollments
+      );
+
+      setCourses(
+        courseRes.data.courses
+      );
     } catch (err) {
-      console.error('Erreur lors du chargement:', err);
+      console.error(
+        'Erreur lors du chargement :',
+        err
+      );
     }
   }
 
@@ -93,26 +109,34 @@ export default function Dashboard() {
     load();
   }, []);
 
-  // ==========================================================
-  // DECONNEXION
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // LOGOUT
+  // ---------------------------------------------------------------------------
 
   function logout() {
-    localStorage.removeItem('korintek_training_token');
-    localStorage.removeItem('korintek_training_user');
+    localStorage.removeItem(
+      'korintek_training_token'
+    );
+
+    localStorage.removeItem(
+      'korintek_training_user'
+    );
 
     navigate('/login');
   }
 
-  // ==========================================================
-  // AJOUT INSCRIPTION
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // ADD ENROLLMENT
+  // ---------------------------------------------------------------------------
 
   async function handleAdd(e) {
     e.preventDefault();
 
     try {
-      await apiClient.post('/enrollments', form);
+      await apiClient.post(
+        '/enrollments',
+        form
+      );
 
       setForm({
         nom: '',
@@ -130,63 +154,81 @@ export default function Dashboard() {
     } catch (err) {
       alert(
         err.response?.data?.error ||
-          "Erreur lors de l'inscription."
+        "Erreur lors de l'inscription."
       );
     }
   }
 
-  // ==========================================================
-  // STATUT
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // UPDATE STATUS
+  // ---------------------------------------------------------------------------
 
-  async function updateStatut(id, statut) {
+  async function updateStatut(
+    id,
+    statut
+  ) {
     try {
-      await apiClient.put(`/enrollments/${id}`, {
-        statut,
-      });
+      await apiClient.put(
+        `/enrollments/${id}`,
+        { statut }
+      );
 
       await load();
     } catch (err) {
       alert(
         err.response?.data?.error ||
-          'Erreur lors de la mise à jour du statut.'
+        'Erreur lors de la mise à jour du statut.'
       );
     }
   }
 
-  // ==========================================================
-  // ATTESTATION
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // ISSUE CERTIFICATE
+  // ---------------------------------------------------------------------------
 
-  async function issueCertificate(enrollmentId) {
+  async function issueCertificate(
+    enrollmentId
+  ) {
     try {
-      await apiClient.post('/certificates/issue', {
-        enrollmentId,
-      });
+      await apiClient.post(
+        '/certificates/issue',
+        { enrollmentId }
+      );
 
       await load();
     } catch (err) {
       alert(
         err.response?.data?.error ||
-          'Erreur lors de la délivrance.'
+        'Erreur lors de la délivrance.'
       );
     }
   }
 
-  // ==========================================================
-  // MODIFICATION PAIEMENT
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // PAYMENT EDIT
+  // ---------------------------------------------------------------------------
 
-  function startEditPayment(enrollment) {
-    setEditingPaymentId(enrollment.id);
-    setEditAmount(String(enrollment.amountPaid));
+  function startEditPayment(
+    enrollment
+  ) {
+    setEditingPaymentId(
+      enrollment.id
+    );
+
+    setEditAmount(
+      String(enrollment.amountPaid)
+    );
   }
 
   async function savePayment(id) {
     try {
-      await apiClient.put(`/enrollments/${id}`, {
-        amountPaid: Number(editAmount),
-      });
+      await apiClient.put(
+        `/enrollments/${id}`,
+        {
+          amountPaid:
+            Number(editAmount),
+        }
+      );
 
       setEditingPaymentId(null);
 
@@ -194,32 +236,45 @@ export default function Dashboard() {
     } catch (err) {
       alert(
         err.response?.data?.error ||
-          'Erreur lors de la mise à jour du paiement.'
+        'Erreur lors de la mise à jour du paiement.'
       );
     }
   }
 
-  // ==========================================================
-  // MODIFICATION APPRENANT
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // STUDENT EDIT
+  // ---------------------------------------------------------------------------
 
-  function startEditStudent(enrollment) {
-    if (!enrollment.student) return;
+  function startEditStudent(
+    enrollment
+  ) {
+    setEditingStudentId(
+      enrollment.id
+    );
 
-    setEditingStudentId(enrollment.id);
+    setEditStudent({
+      nom:
+        enrollment.student?.nom ||
+        '',
 
-    setStudentForm({
-      nom: enrollment.student.nom || '',
-      prenom: enrollment.student.prenom || '',
-      email: enrollment.student.email || '',
-      telephone: enrollment.student.telephone || '',
+      prenom:
+        enrollment.student?.prenom ||
+        '',
+
+      email:
+        enrollment.student?.email ||
+        '',
+
+      telephone:
+        enrollment.student?.telephone ||
+        '',
     });
   }
 
   function cancelEditStudent() {
     setEditingStudentId(null);
 
-    setStudentForm({
+    setEditStudent({
       nom: '',
       prenom: '',
       email: '',
@@ -227,9 +282,26 @@ export default function Dashboard() {
     });
   }
 
-  async function saveStudent(id) {
-    if (!studentForm.nom.trim() || !studentForm.prenom.trim()) {
-      alert('Le nom et le prénom sont requis.');
+  async function saveStudent(
+    enrollmentId
+  ) {
+    if (
+      !editStudent.nom.trim() ||
+      !editStudent.prenom.trim()
+    ) {
+      alert(
+        'Le nom et le prénom sont obligatoires.'
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        'Confirmer la correction des informations de cet apprenant ?\n\nSi une attestation existe déjà, son nom et son empreinte de sécurité seront automatiquement mis à jour.'
+      );
+
+    if (!confirmed) {
       return;
     }
 
@@ -237,40 +309,56 @@ export default function Dashboard() {
 
     try {
       await apiClient.put(
-        `/enrollments/${id}/student`,
+        `/enrollments/${enrollmentId}`,
         {
-          nom: studentForm.nom.trim(),
-          prenom: studentForm.prenom.trim(),
-          email: studentForm.email.trim(),
-          telephone: studentForm.telephone.trim(),
+          nom:
+            editStudent.nom.trim(),
+
+          prenom:
+            editStudent.prenom.trim(),
+
+          email:
+            editStudent.email.trim(),
+
+          telephone:
+            editStudent.telephone.trim(),
         }
       );
 
-      cancelEditStudent();
+      setEditingStudentId(null);
+
+      setEditStudent({
+        nom: '',
+        prenom: '',
+        email: '',
+        telephone: '',
+      });
 
       await load();
 
-      alert('Les informations de l’apprenant ont été corrigées.');
+      alert(
+        'Apprenant corrigé avec succès.\n\nL’attestation existante a également été synchronisée.'
+      );
     } catch (err) {
       alert(
         err.response?.data?.error ||
-          'Erreur lors de la correction de l’apprenant.'
+        "Erreur lors de la correction de l'apprenant."
       );
     } finally {
       setSavingStudent(false);
     }
   }
 
-  // ==========================================================
-  // RENDU
-  // ==========================================================
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="min-h-screen page-bg">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+      {/* --------------------------------------------------------------------- */}
+      {/* HEADER                                                               */}
+      {/* --------------------------------------------------------------------- */}
 
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
 
@@ -287,7 +375,10 @@ export default function Dashboard() {
             </h1>
 
             <p className="text-xs text-slate-400">
-              {user?.prenom} {user?.nom} · {user?.role}
+              {user?.prenom}{' '}
+              {user?.nom}
+              {' · '}
+              {user?.role}
             </p>
           </div>
 
@@ -298,16 +389,21 @@ export default function Dashboard() {
           {(user?.role === 'SUPER_ADMIN' ||
             user?.role === 'ADMIN') && (
             <button
-              onClick={() => navigate('/formations')}
+              onClick={() =>
+                navigate('/formations')
+              }
               className="text-sm text-korintek-tealDark hover:underline"
             >
               Formations
             </button>
           )}
 
-          {user?.role === 'SUPER_ADMIN' && (
+          {user?.role ===
+            'SUPER_ADMIN' && (
             <button
-              onClick={() => navigate('/users')}
+              onClick={() =>
+                navigate('/users')
+              }
               className="text-sm text-korintek-tealDark hover:underline"
             >
               Utilisateurs
@@ -332,22 +428,26 @@ export default function Dashboard() {
 
       </header>
 
-      {/* ======================================================
-          CONTENU
-      ====================================================== */}
+      {/* --------------------------------------------------------------------- */}
+      {/* MAIN                                                                 */}
+      {/* --------------------------------------------------------------------- */}
 
       <main className="p-6 max-w-6xl mx-auto space-y-6">
 
-        {/* ====================================================
-            AJOUT INSCRIPTION
-        ==================================================== */}
+        {/* ADD STUDENT */}
 
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() =>
+            setShowForm((v) => !v)
+          }
           className="bg-korintek-teal hover:bg-korintek-tealDark text-white text-sm font-medium rounded-lg px-4 py-2"
         >
           + Inscrire un étudiant
         </button>
+
+        {/* ------------------------------------------------------------------- */}
+        {/* ADD FORM                                                            */}
+        {/* ------------------------------------------------------------------- */}
 
         {showForm && (
           <form
@@ -362,7 +462,8 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  prenom: e.target.value,
+                  prenom:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -375,7 +476,8 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  nom: e.target.value,
+                  nom:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -387,7 +489,8 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  email: e.target.value,
+                  email:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -399,7 +502,8 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  telephone: e.target.value,
+                  telephone:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -411,12 +515,12 @@ export default function Dashboard() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  courseId: e.target.value,
+                  courseId:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
-
               <option value="">
                 Formation...
               </option>
@@ -429,20 +533,21 @@ export default function Dashboard() {
                   {c.title}
                 </option>
               ))}
-
             </select>
 
             <select
-              value={form.paymentMethod}
+              value={
+                form.paymentMethod
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
-                  paymentMethod: e.target.value,
+                  paymentMethod:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
-
               <option value="">
                 Mode de paiement...
               </option>
@@ -462,17 +567,19 @@ export default function Dashboard() {
               <option value="OTHER">
                 Autre
               </option>
-
             </select>
 
             <input
               type="number"
               placeholder="Montant payé (FCFA)"
-              value={form.amountPaid}
+              value={
+                form.amountPaid
+              }
               onChange={(e) =>
                 setForm({
                   ...form,
-                  amountPaid: e.target.value,
+                  amountPaid:
+                    e.target.value,
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -488,371 +595,410 @@ export default function Dashboard() {
           </form>
         )}
 
-        {/* ====================================================
-            TABLEAU
-        ==================================================== */}
+        {/* ------------------------------------------------------------------- */}
+        {/* TABLE                                                               */}
+        {/* ------------------------------------------------------------------- */}
 
         <section className="bg-white border border-slate-100 rounded-xl shadow-card overflow-hidden">
 
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
 
-            <thead className="bg-slate-50 text-slate-500 text-left">
+            <table className="w-full text-sm">
 
-              <tr>
+              <thead className="bg-slate-50 text-slate-500 text-left">
 
-                <th className="px-4 py-2">
-                  Étudiant
-                </th>
+                <tr>
 
-                <th className="px-4 py-2">
-                  Formation
-                </th>
+                  <th className="px-4 py-2">
+                    Étudiant
+                  </th>
 
-                <th className="px-4 py-2">
-                  Paiement
-                </th>
+                  <th className="px-4 py-2">
+                    Formation
+                  </th>
 
-                <th className="px-4 py-2">
-                  Statut
-                </th>
+                  <th className="px-4 py-2">
+                    Paiement
+                  </th>
 
-                <th className="px-4 py-2">
-                  Attestation
-                </th>
+                  <th className="px-4 py-2">
+                    Statut
+                  </th>
 
-              </tr>
+                  <th className="px-4 py-2">
+                    Attestation
+                  </th>
 
-            </thead>
+                </tr>
 
-            <tbody>
+              </thead>
 
-              {enrollments.map((e) => {
+              <tbody>
 
-                const paymentComplete =
-                  e.amountPaid >= e.amountDue;
+                {enrollments.map((e) => {
 
-                const isEditingThisPayment =
-                  editingPaymentId === e.id;
+                  const paymentComplete =
+                    e.amountPaid >=
+                    e.amountDue;
 
-                const isEditingThisStudent =
-                  editingStudentId === e.id;
+                  const isEditingThisPayment =
+                    editingPaymentId ===
+                    e.id;
 
-                return (
-                  <tr
-                    key={e.id}
-                    className="border-t border-slate-100"
-                  >
+                  const isEditingThisStudent =
+                    editingStudentId ===
+                    e.id;
 
-                    {/* =================================================
-                        ETUDIANT
-                    ================================================= */}
+                  return (
+                    <tr
+                      key={e.id}
+                      className="border-t border-slate-100"
+                    >
 
-                    <td className="px-4 py-2">
+                      {/* --------------------------------------------------- */}
+                      {/* ETUDIANT                                            */}
+                      {/* --------------------------------------------------- */}
 
-                      {isEditingThisStudent ? (
+                      <td className="px-4 py-2">
 
-                        <div className="min-w-[260px] space-y-2">
+                        {isEditingThisStudent ? (
 
-                          <input
-                            autoFocus
-                            placeholder="Prénom"
-                            value={studentForm.prenom}
-                            onChange={(ev) =>
-                              setStudentForm({
-                                ...studentForm,
-                                prenom: ev.target.value,
-                              })
-                            }
-                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
+                          <div className="space-y-2 min-w-[230px]">
 
-                          <input
-                            placeholder="Nom"
-                            value={studentForm.nom}
-                            onChange={(ev) =>
-                              setStudentForm({
-                                ...studentForm,
-                                nom: ev.target.value,
-                              })
-                            }
-                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
+                            <div className="grid grid-cols-2 gap-1">
 
-                          <input
-                            type="email"
-                            placeholder="Email"
-                            value={studentForm.email}
-                            onChange={(ev) =>
-                              setStudentForm({
-                                ...studentForm,
-                                email: ev.target.value,
-                              })
-                            }
-                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
+                              <input
+                                autoFocus
+                                placeholder="Prénom"
+                                value={
+                                  editStudent.prenom
+                                }
+                                onChange={(ev) =>
+                                  setEditStudent({
+                                    ...editStudent,
+                                    prenom:
+                                      ev.target.value,
+                                  })
+                                }
+                                className="rounded border border-slate-300 px-2 py-1 text-xs"
+                              />
 
-                          <input
-                            placeholder="Téléphone"
-                            value={studentForm.telephone}
-                            onChange={(ev) =>
-                              setStudentForm({
-                                ...studentForm,
-                                telephone: ev.target.value,
-                              })
-                            }
-                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
+                              <input
+                                placeholder="Nom"
+                                value={
+                                  editStudent.nom
+                                }
+                                onChange={(ev) =>
+                                  setEditStudent({
+                                    ...editStudent,
+                                    nom:
+                                      ev.target.value,
+                                  })
+                                }
+                                className="rounded border border-slate-300 px-2 py-1 text-xs"
+                              />
+
+                            </div>
+
+                            <input
+                              placeholder="Email"
+                              value={
+                                editStudent.email
+                              }
+                              onChange={(ev) =>
+                                setEditStudent({
+                                  ...editStudent,
+                                  email:
+                                    ev.target.value,
+                                })
+                              }
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+
+                            <input
+                              placeholder="Téléphone"
+                              value={
+                                editStudent.telephone
+                              }
+                              onChange={(ev) =>
+                                setEditStudent({
+                                  ...editStudent,
+                                  telephone:
+                                    ev.target.value,
+                                })
+                              }
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+
+                            <div className="flex items-center gap-2">
+
+                              <button
+                                onClick={() =>
+                                  saveStudent(
+                                    e.id
+                                  )
+                                }
+                                disabled={
+                                  savingStudent
+                                }
+                                className="text-xs bg-korintek-teal text-white rounded px-3 py-1 disabled:opacity-50"
+                              >
+                                {savingStudent
+                                  ? 'Enregistrement...'
+                                  : 'Enregistrer'}
+                              </button>
+
+                              <button
+                                onClick={
+                                  cancelEditStudent
+                                }
+                                disabled={
+                                  savingStudent
+                                }
+                                className="text-xs text-slate-400 hover:text-slate-700"
+                              >
+                                Annuler
+                              </button>
+
+                            </div>
+
+                          </div>
+
+                        ) : (
 
                           <div className="flex items-center gap-2">
 
+                            <span>
+                              {e.student.prenom}{' '}
+                              {e.student.nom}
+                            </span>
+
                             <button
-                              type="button"
-                              disabled={savingStudent}
                               onClick={() =>
-                                saveStudent(e.id)
+                                startEditStudent(
+                                  e
+                                )
                               }
-                              className="text-xs bg-korintek-teal text-white rounded px-3 py-1 disabled:opacity-50"
+                              className="text-xs text-slate-400 hover:text-korintek-tealDark underline whitespace-nowrap"
+                              title="Modifier les informations de l'apprenant"
                             >
-                              {savingStudent
-                                ? 'Enregistrement...'
-                                : 'Enregistrer'}
+                              Modifier
+                            </button>
+
+                          </div>
+
+                        )}
+
+                      </td>
+
+                      {/* --------------------------------------------------- */}
+                      {/* FORMATION                                           */}
+                      {/* --------------------------------------------------- */}
+
+                      <td className="px-4 py-2">
+                        {e.course.title}
+                      </td>
+
+                      {/* --------------------------------------------------- */}
+                      {/* PAIEMENT                                            */}
+                      {/* --------------------------------------------------- */}
+
+                      <td className="px-4 py-2 text-slate-500">
+
+                        {isEditingThisPayment ? (
+
+                          <div className="flex items-center gap-1">
+
+                            <input
+                              type="number"
+                              autoFocus
+                              value={
+                                editAmount
+                              }
+                              onChange={(ev) =>
+                                setEditAmount(
+                                  ev.target.value
+                                )
+                              }
+                              className="w-24 rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+
+                            <span className="text-xs">
+                              /
+                              {' '}
+                              {e.amountDue.toLocaleString(
+                                'fr-FR'
+                              )}
+                              {' '}
+                              FCFA
+                            </span>
+
+                            <button
+                              onClick={() =>
+                                savePayment(
+                                  e.id
+                                )
+                              }
+                              className="text-xs text-korintek-tealDark font-medium ml-1"
+                            >
+                              OK
                             </button>
 
                             <button
-                              type="button"
-                              disabled={savingStudent}
-                              onClick={cancelEditStudent}
-                              className="text-xs text-slate-400 hover:text-slate-700"
+                              onClick={() =>
+                                setEditingPaymentId(
+                                  null
+                                )
+                              }
+                              className="text-xs text-slate-400"
                             >
                               Annuler
                             </button>
 
                           </div>
 
-                        </div>
+                        ) : (
 
-                      ) : (
+                          <div className="flex items-center gap-2">
 
-                        <div className="flex items-center gap-2">
-
-                          <span>
-                            {e.student.prenom}{' '}
-                            {e.student.nom}
-                          </span>
-
-                          {canEditStudent && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEditStudent(e)
+                            <span
+                              className={
+                                paymentComplete
+                                  ? ''
+                                  : 'text-amber-600 font-medium'
                               }
-                              className="text-xs text-slate-400 hover:text-korintek-tealDark underline"
-                              title="Modifier les informations de l'apprenant"
                             >
-                              Modifier
-                            </button>
+                              {e.amountPaid.toLocaleString(
+                                'fr-FR'
+                              )}
+                              {' / '}
+                              {e.amountDue.toLocaleString(
+                                'fr-FR'
+                              )}
+                              {' '}
+                              FCFA
+                            </span>
+
+                            {isSuperAdmin && (
+                              <button
+                                onClick={() =>
+                                  startEditPayment(
+                                    e
+                                  )
+                                }
+                                className="text-xs text-slate-400 hover:text-korintek-tealDark underline"
+                                title="Modifier le montant payé (SUPER_ADMIN)"
+                              >
+                                Modifier
+                              </button>
+                            )}
+
+                          </div>
+
+                        )}
+
+                      </td>
+
+                      {/* --------------------------------------------------- */}
+                      {/* STATUT                                              */}
+                      {/* --------------------------------------------------- */}
+
+                      <td className="px-4 py-2">
+
+                        <select
+                          value={e.statut}
+                          onChange={(ev) =>
+                            updateStatut(
+                              e.id,
+                              ev.target.value
+                            )
+                          }
+                          className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut]}`}
+                        >
+
+                          {Object.entries(
+                            STATUT_LABELS
+                          ).map(
+                            ([k, v]) => (
+                              <option
+                                key={k}
+                                value={k}
+                              >
+                                {v}
+                              </option>
+                            )
                           )}
 
-                        </div>
+                        </select>
 
-                      )}
+                      </td>
 
-                    </td>
+                      {/* --------------------------------------------------- */}
+                      {/* CERTIFICAT                                           */}
+                      {/* --------------------------------------------------- */}
 
-                    {/* =================================================
-                        FORMATION
-                    ================================================= */}
+                      <td className="px-4 py-2">
 
-                    <td className="px-4 py-2">
-                      {e.course.title}
-                    </td>
+                        {e.certificate ? (
 
-                    {/* =================================================
-                        PAIEMENT
-                    ================================================= */}
+                          <a
+                            href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-korintek-tealDark hover:underline text-xs font-mono"
+                          >
+                            {e.certificate.numero}
+                          </a>
 
-                    <td className="px-4 py-2 text-slate-500">
+                        ) : paymentComplete ? (
 
-                      {isEditingThisPayment ? (
-
-                        <div className="flex items-center gap-1">
-
-                          <input
-                            type="number"
-                            autoFocus
-                            value={editAmount}
-                            onChange={(ev) =>
-                              setEditAmount(
-                                ev.target.value
+                          <button
+                            onClick={() =>
+                              issueCertificate(
+                                e.id
                               )
                             }
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
-
-                          <span className="text-xs">
-                            /{' '}
-                            {e.amountDue.toLocaleString(
-                              'fr-FR'
-                            )}{' '}
-                            FCFA
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              savePayment(e.id)
-                            }
-                            className="text-xs text-korintek-tealDark font-medium ml-1"
+                            className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1"
                           >
-                            OK
+                            Délivrer
                           </button>
 
+                        ) : (
+
                           <button
-                            type="button"
-                            onClick={() =>
-                              setEditingPaymentId(null)
-                            }
-                            className="text-xs text-slate-400"
+                            disabled
+                            title="Paiement incomplet — impossible de délivrer l'attestation"
+                            className="text-xs bg-slate-200 text-slate-400 rounded-full px-3 py-1 cursor-not-allowed"
                           >
-                            Annuler
+                            Délivrer
                           </button>
 
-                        </div>
+                        )}
 
-                      ) : (
+                      </td>
 
-                        <div className="flex items-center gap-2">
+                    </tr>
+                  );
+                })}
 
-                          <span
-                            className={
-                              paymentComplete
-                                ? ''
-                                : 'text-amber-600 font-medium'
-                            }
-                          >
-                            {e.amountPaid.toLocaleString(
-                              'fr-FR'
-                            )}{' '}
-                            /{' '}
-                            {e.amountDue.toLocaleString(
-                              'fr-FR'
-                            )}{' '}
-                            FCFA
-                          </span>
+                {!enrollments.length && (
+                  <tr>
 
-                          {isSuperAdmin && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEditPayment(e)
-                              }
-                              className="text-xs text-slate-400 hover:text-korintek-tealDark underline"
-                              title="Modifier le montant payé (SUPER_ADMIN)"
-                            >
-                              Modifier
-                            </button>
-                          )}
-
-                        </div>
-
-                      )}
-
-                    </td>
-
-                    {/* =================================================
-                        STATUT
-                    ================================================= */}
-
-                    <td className="px-4 py-2">
-
-                      <select
-                        value={e.statut}
-                        onChange={(ev) =>
-                          updateStatut(
-                            e.id,
-                            ev.target.value
-                          )
-                        }
-                        className={`text-xs font-medium rounded-full px-2 py-1 border-0 ${STATUT_BADGE[e.statut]}`}
-                      >
-
-                        {Object.entries(
-                          STATUT_LABELS
-                        ).map(([k, v]) => (
-                          <option
-                            key={k}
-                            value={k}
-                          >
-                            {v}
-                          </option>
-                        ))}
-
-                      </select>
-
-                    </td>
-
-                    {/* =================================================
-                        ATTESTATION
-                    ================================================= */}
-
-                    <td className="px-4 py-2">
-
-                      {e.certificate ? (
-
-                        <a
-                          href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-korintek-tealDark hover:underline text-xs font-mono"
-                        >
-                          {e.certificate.numero}
-                        </a>
-
-                      ) : paymentComplete ? (
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            issueCertificate(e.id)
-                          }
-                          className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1"
-                        >
-                          Délivrer
-                        </button>
-
-                      ) : (
-
-                        <button
-                          type="button"
-                          disabled
-                          title="Paiement incomplet — impossible de délivrer l'attestation"
-                          className="text-xs bg-slate-200 text-slate-400 rounded-full px-3 py-1 cursor-not-allowed"
-                        >
-                          Délivrer
-                        </button>
-
-                      )}
-
+                    <td
+                      colSpan={5}
+                      className="px-4 py-6 text-center text-slate-400"
+                    >
+                      Aucune inscription.
                     </td>
 
                   </tr>
-                );
-              })}
+                )}
 
-              {!enrollments.length && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-6 text-center text-slate-400"
-                  >
-                    Aucune inscription.
-                  </td>
-                </tr>
-              )}
+              </tbody>
 
-            </tbody>
+            </table>
 
-          </table>
+          </div>
 
         </section>
 
