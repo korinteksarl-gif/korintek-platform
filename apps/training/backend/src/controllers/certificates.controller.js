@@ -847,7 +847,12 @@ async function issue(
       });
     }
 
-    if (enrollment.certificate) {
+    const archivedExistingCertificate =
+      enrollment.certificate?.archivedAt
+        ? enrollment.certificate
+        : null;
+
+    if (enrollment.certificate && !archivedExistingCertificate) {
       return res.status(409).json({
         error:
           'Une attestation existe déjà pour cette inscription.',
@@ -958,32 +963,41 @@ async function issue(
     // CREATION CERTIFICAT
     // -------------------------------------------------------------------------
 
-    const certificate =
-      await prisma.certificate.create({
-        data: {
-          enrollmentId,
-
-          numero,
-
-          studentNameSnapshot:
-            studentName,
-
-          courseTitleSnapshot:
-            enrollment.course.title,
-
-          durationHoursSnapshot:
-            durationHours,
-
-          trainingStartDate,
-          trainingEndDate,
-
-          completionDate:
-            finalDate,
-
-          certificateHash:
-            hash,
-        },
-      });
+    // Si l'ancienne attestation a été archivée pour erreur, on réutilise
+    // l'enregistrement afin de conserver l'historique d'audit sans créer
+    // plusieurs certificats pour la même inscription. Le nouveau numéro
+    // devient alors le seul numéro actif pour cette inscription.
+    const certificate = archivedExistingCertificate
+      ? await prisma.certificate.update({
+          where: { id: archivedExistingCertificate.id },
+          data: {
+            numero,
+            studentNameSnapshot: studentName,
+            courseTitleSnapshot: enrollment.course.title,
+            durationHoursSnapshot: durationHours,
+            trainingStartDate,
+            trainingEndDate,
+            completionDate: finalDate,
+            certificateHash: hash,
+            issuedAt: new Date(),
+            archivedAt: null,
+            archivedBy: null,
+            archiveReason: null,
+          },
+        })
+      : await prisma.certificate.create({
+          data: {
+            enrollmentId,
+            numero,
+            studentNameSnapshot: studentName,
+            courseTitleSnapshot: enrollment.course.title,
+            durationHoursSnapshot: durationHours,
+            trainingStartDate,
+            trainingEndDate,
+            completionDate: finalDate,
+            certificateHash: hash,
+          },
+        });
 
     // -------------------------------------------------------------------------
     // MARQUER L'INSCRIPTION COMME TERMINEE
@@ -1000,18 +1014,16 @@ async function issue(
 
     await logAction(
       req.user?.id,
-      'CERTIFICATE_ISSUED',
+      archivedExistingCertificate
+        ? 'CERTIFICATE_REISSUED_AFTER_ARCHIVE'
+        : 'CERTIFICATE_ISSUED',
       {
-        certificateId:
-          certificate.id,
-
-        certificateNumber:
-          certificate.numero,
-
+        certificateId: certificate.id,
+        certificateNumber: certificate.numero,
+        previousCertificateNumber:
+          archivedExistingCertificate?.numero || null,
         enrollmentId,
-
         trainingStartDate,
-
         trainingPeriod:
           formatTrainingPeriod(
             trainingStartDate,
@@ -1062,10 +1074,10 @@ async function downloadPdf(
         },
       });
 
-    if (!certificate) {
+    if (!certificate || certificate.archivedAt) {
       return res.status(404).json({
         error:
-          'Attestation introuvable.',
+          'Attestation introuvable ou archivée.',
       });
     }
 
@@ -1265,11 +1277,11 @@ async function verify(
         },
       });
 
-    if (!certificate) {
+    if (!certificate || certificate.archivedAt) {
       return res.status(404).json({
         valid: false,
         error:
-          'Aucune attestation ne correspond à ce numéro.',
+          'Aucune attestation active ne correspond à ce numéro.',
       });
     }
 
@@ -1430,6 +1442,122 @@ async function verify(
 }
 
 // -----------------------------------------------------------------------------
+// ARCHIVE CERTIFICATE
+// -----------------------------------------------------------------------------
+
+async function archive(
+  req,
+  res,
+  next
+) {
+  try {
+    const { numero } = req.params;
+    const reason =
+      typeof req.body?.reason === 'string'
+        ? req.body.reason.trim().slice(0, 1000)
+        : '';
+
+    if (!reason) {
+      return res.status(400).json({
+        error: "Le motif d'archivage est requis.",
+      });
+    }
+
+    const certificate = await prisma.certificate.findUnique({
+      where: { numero },
+    });
+
+    if (!certificate) {
+      return res.status(404).json({
+        error: 'Attestation introuvable.',
+      });
+    }
+
+    if (certificate.archivedAt) {
+      return res.status(409).json({
+        error: 'Cette attestation est déjà archivée.',
+      });
+    }
+
+    const archived = await prisma.certificate.update({
+      where: { id: certificate.id },
+      data: {
+        archivedAt: new Date(),
+        archivedBy: req.user?.id || null,
+        archiveReason: reason,
+      },
+    });
+
+    await logAction(
+      req.user?.id,
+      'CERTIFICATE_ARCHIVED',
+      {
+        certificateId: certificate.id,
+        certificateNumber: certificate.numero,
+        enrollmentId: certificate.enrollmentId,
+        reason,
+      }
+    );
+
+    res.json({ certificate: archived });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PERMANENT DELETE
+// -----------------------------------------------------------------------------
+
+async function remove(
+  req,
+  res,
+  next
+) {
+  try {
+    const { numero } = req.params;
+
+    const certificate = await prisma.certificate.findUnique({
+      where: { numero },
+    });
+
+    if (!certificate) {
+      return res.status(404).json({
+        error: 'Attestation introuvable.',
+      });
+    }
+
+    if (!certificate.archivedAt) {
+      return res.status(409).json({
+        error: "Pour éviter une suppression accidentelle, l'attestation doit d'abord être archivée.",
+      });
+    }
+
+    await logAction(
+      req.user?.id,
+      'CERTIFICATE_DELETED',
+      {
+        certificateId: certificate.id,
+        certificateNumber: certificate.numero,
+        enrollmentId: certificate.enrollmentId,
+        archiveReason: certificate.archiveReason,
+      }
+    );
+
+    await prisma.certificate.delete({
+      where: { id: certificate.id },
+    });
+
+    res.json({
+      success: true,
+      message: 'Attestation supprimée définitivement.',
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // LIST
 // -----------------------------------------------------------------------------
 
@@ -1439,8 +1567,13 @@ async function list(
   next
 ) {
   try {
+    const includeArchived =
+      req.query.includeArchived === 'true' &&
+      req.user?.role === 'SUPER_ADMIN';
+
     const certificates =
       await prisma.certificate.findMany({
+        where: includeArchived ? undefined : { archivedAt: null },
         orderBy: {
           issuedAt: 'desc',
         },
@@ -1463,4 +1596,6 @@ module.exports = {
   downloadPdf,
   verify,
   list,
+  archive,
+  remove,
 };

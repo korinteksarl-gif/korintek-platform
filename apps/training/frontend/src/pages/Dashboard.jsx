@@ -51,6 +51,73 @@ export default function Dashboard() {
   });
 
   // ---------------------------------------------------------------------------
+  // ARCHIVE / DELETE CERTIFICATE
+  // ---------------------------------------------------------------------------
+
+  async function archiveCertificate(certificate) {
+    const reason = window.prompt(
+      `Motif d'archivage de l'attestation ${certificate.numero} :`,
+      'Erreur sur les informations de l'attestation'
+    );
+
+    if (reason === null) return;
+
+    const cleanReason = reason.trim();
+
+    if (!cleanReason) {
+      alert("Le motif d'archivage est obligatoire.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Archiver l'attestation ${certificate.numero} ?\n\n` +
+      `Elle ne sera plus considérée comme valide publiquement. ` +
+      `Vous pourrez ensuite rééditer une nouvelle attestation pour cette inscription.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiClient.post(
+        `/certificates/${encodeURIComponent(certificate.numero)}/archive`,
+        { reason: cleanReason }
+      );
+
+      await load();
+      alert('Attestation archivée avec succès.');
+    } catch (err) {
+      alert(
+        err.response?.data?.error ||
+        "Erreur lors de l'archivage de l'attestation."
+      );
+    }
+  }
+
+  async function deleteCertificate(certificate) {
+    const confirmed = window.confirm(
+      `SUPPRESSION DÉFINITIVE\n\n` +
+      `Attestation : ${certificate.numero}\n` +
+      `Cette action est irréversible. Continuer ?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await apiClient.delete(
+        `/certificates/${encodeURIComponent(certificate.numero)}`
+      );
+
+      await load();
+      alert('Attestation supprimée définitivement.');
+    } catch (err) {
+      alert(
+        err.response?.data?.error ||
+        "Erreur lors de la suppression de l'attestation."
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // PAYMENT EDIT
   // ---------------------------------------------------------------------------
 
@@ -79,6 +146,9 @@ export default function Dashboard() {
   );
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const canManageCertificates =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'ADMIN';
 
   // ---------------------------------------------------------------------------
   // LOAD
@@ -936,14 +1006,79 @@ export default function Dashboard() {
 
                         {e.certificate ? (
 
-                          <a
-                            href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-korintek-tealDark hover:underline text-xs font-mono"
-                          >
-                            {e.certificate.numero}
-                          </a>
+                          <div className="flex flex-col gap-2 min-w-[220px]">
+
+                            {e.certificate.archivedAt ? (
+
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className="text-xs font-mono text-slate-400 line-through"
+                                  title={e.certificate.archiveReason || 'Attestation archivée'}
+                                >
+                                  {e.certificate.numero}
+                                </span>
+
+                                <span className="text-[10px] uppercase tracking-wide font-semibold bg-amber-100 text-amber-700 rounded-full px-2 py-1">
+                                  Archivée
+                                </span>
+                              </div>
+
+                            ) : (
+
+                              <a
+                                href={`${import.meta.env.VITE_API_URL}/certificates/${e.certificate.numero}/pdf`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-korintek-tealDark hover:underline text-xs font-mono"
+                              >
+                                {e.certificate.numero}
+                              </a>
+
+                            )}
+
+                            {e.certificate.archivedAt ? (
+
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {paymentComplete && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openCertificateIssue(e)
+                                    }
+                                    className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1"
+                                  >
+                                    Rééditer
+                                  </button>
+                                )}
+
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      deleteCertificate(e.certificate)
+                                    }
+                                    className="text-xs text-red-600 hover:text-red-800 underline"
+                                  >
+                                    Supprimer définitivement
+                                  </button>
+                                )}
+                              </div>
+
+                            ) : canManageCertificates ? (
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  archiveCertificate(e.certificate)
+                                }
+                                className="text-xs text-amber-700 hover:text-amber-900 underline text-left w-fit"
+                              >
+                                Archiver si erreur
+                              </button>
+
+                            ) : null}
+
+                          </div>
 
                         ) : paymentComplete ? (
 
