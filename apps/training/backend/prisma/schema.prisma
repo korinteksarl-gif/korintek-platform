@@ -162,6 +162,10 @@ model Certificate {
   // Elle sert de référence pour calculer la période affichée.
   trainingStartDate     DateTime?  @db.Date
 
+  // Date réelle de fin de la période de formation.
+  // Les nouvelles attestations la définissent manuellement.
+  trainingEndDate       DateTime?  @db.Date
+
   // Date d'obtention / de délivrance de l'attestation.
   completionDate        DateTime   @db.Date
 

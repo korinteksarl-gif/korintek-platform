@@ -144,21 +144,25 @@ function addOneMonth(date) {
  * Exemple :
  * 03 août 2026 -> AOÛT 2026 - SEPTEMBRE 2026
  */
-function formatTrainingPeriod(startDate) {
+function formatTrainingPeriod(startDate, endDate) {
   if (!startDate) {
     return '';
   }
 
-  const endDate = addOneMonth(startDate);
+  // Pour les anciennes attestations, la date de fin n'existait pas :
+  // on conserve l'ancien comportement (un mois après le début).
+  const effectiveEndDate = endDate || addOneMonth(startDate);
 
-  if (!endDate) {
+  if (!effectiveEndDate) {
     return '';
   }
 
   const startMonth = formatMonthYear(startDate);
-  const endMonth = formatMonthYear(endDate);
+  const endMonth = formatMonthYear(effectiveEndDate);
 
-  return `${startMonth} - ${endMonth}`;
+  return startMonth === endMonth
+    ? startMonth
+    : `${startMonth} - ${endMonth}`;
 }
 
 /**
@@ -267,6 +271,35 @@ function computeCertificateHash({
   courseTitle,
   durationHours,
   trainingStartDate,
+  trainingEndDate,
+  completionDate,
+}) {
+  const payload = [
+    numero,
+    studentName,
+    courseTitle,
+    durationHours,
+    formatDateForHash(trainingStartDate),
+    formatDateForHash(trainingEndDate),
+    formatDateForHash(completionDate),
+  ].join('|');
+
+  return crypto
+    .createHash('sha256')
+    .update(payload)
+    .digest('hex');
+}
+
+/**
+ * Hash V1 : utilisé par les attestations déjà créées avant l'ajout
+ * de la date de fin de formation.
+ */
+function computeCertificateHashV1({
+  numero,
+  studentName,
+  courseTitle,
+  durationHours,
+  trainingStartDate,
   completionDate,
 }) {
   const payload = [
@@ -324,8 +357,18 @@ async function ensureHash(certificate) {
 
   let hash;
 
-  if (certificate.trainingStartDate) {
+  if (certificate.trainingStartDate && certificate.trainingEndDate) {
     hash = computeCertificateHash({
+      numero: certificate.numero,
+      studentName: certificate.studentNameSnapshot,
+      courseTitle: certificate.courseTitleSnapshot,
+      durationHours: certificate.durationHoursSnapshot,
+      trainingStartDate: certificate.trainingStartDate,
+      trainingEndDate: certificate.trainingEndDate,
+      completionDate: certificate.completionDate,
+    });
+  } else if (certificate.trainingStartDate) {
+    hash = computeCertificateHashV1({
       numero: certificate.numero,
       studentName: certificate.studentNameSnapshot,
       courseTitle: certificate.courseTitleSnapshot,
@@ -372,6 +415,7 @@ async function generateCertificatePdf({
   durationHours,
   completionDate,
   trainingStartDate,
+  trainingEndDate,
   numero,
   hash,
 }) {
@@ -548,7 +592,8 @@ async function generateCertificatePdf({
 
   const periodeStr =
     formatTrainingPeriod(
-      trainingStartDate
+      trainingStartDate,
+      trainingEndDate
     );
 
   const {
@@ -765,7 +810,10 @@ async function issue(
   try {
     const {
       enrollmentId,
-      completionDate,
+      trainingStartDate: trainingStartDateRaw,
+      trainingEndDate: trainingEndDateRaw,
+      durationHours: durationHoursRaw,
+      completionDate: completionDateRaw,
     } = req.body;
 
     if (!enrollmentId) {
@@ -821,56 +869,57 @@ async function issue(
     }
 
     // -------------------------------------------------------------------------
-    // SESSION DE FORMATION
+    // PARAMÈTRES MANUELS DE L'ATTESTATION
     // -------------------------------------------------------------------------
 
-    let trainingSession =
-      enrollment.session;
+    // Ces trois valeurs sont volontairement indépendantes de la formation
+    // et de la session : elles décrivent exactement ce qui doit apparaître
+    // sur l'attestation délivrée à cet apprenant.
+    const trainingStartDate =
+      trainingStartDateRaw
+        ? new Date(trainingStartDateRaw)
+        : null;
 
-    if (!trainingSession) {
-      trainingSession =
-        await prisma.session.findFirst({
-          where: {
-            courseId:
-              enrollment.courseId,
-            active: true,
-          },
-          orderBy: {
-            startDate: 'asc',
-          },
-        });
-    }
+    const trainingEndDate =
+      trainingEndDateRaw
+        ? new Date(trainingEndDateRaw)
+        : null;
 
-    if (
-      !trainingSession ||
-      !trainingSession.startDate
-    ) {
+    const durationHours =
+      Number(durationHoursRaw);
+
+    const finalDate =
+      completionDateRaw
+        ? new Date(completionDateRaw)
+        : null;
+
+    if (!trainingStartDate || Number.isNaN(trainingStartDate.getTime())) {
       return res.status(400).json({
-        error:
-          "Impossible de délivrer l'attestation : aucune session de formation avec une date de début n'est disponible pour cette formation.",
+        error: 'La date de début de la période de formation est requise et doit être valide.',
       });
     }
 
-    const trainingStartDate =
-      trainingSession.startDate;
-
-    // -------------------------------------------------------------------------
-    // DATE D'OBTENTION
-    // -------------------------------------------------------------------------
-
-    const finalDate =
-      completionDate
-        ? new Date(completionDate)
-        : new Date();
-
-    if (
-      Number.isNaN(
-        finalDate.getTime()
-      )
-    ) {
+    if (!trainingEndDate || Number.isNaN(trainingEndDate.getTime())) {
       return res.status(400).json({
-        error:
-          "La date d'obtention fournie est invalide.",
+        error: 'La date de fin de la période de formation est requise et doit être valide.',
+      });
+    }
+
+    if (trainingEndDate < trainingStartDate) {
+      return res.status(400).json({
+        error: 'La date de fin de la formation ne peut pas être antérieure à la date de début.',
+      });
+    }
+
+    if (!Number.isInteger(durationHours) || durationHours <= 0) {
+      return res.status(400).json({
+        error: "Le nombre d'heures de formation est requis et doit être supérieur à 0.",
+      });
+    }
+
+    if (!finalDate || Number.isNaN(finalDate.getTime())) {
+      return res.status(400).json({
+        error: "La date d'obtention est requise et doit être valide.",
       });
     }
 
@@ -898,9 +947,9 @@ async function issue(
         studentName,
         courseTitle:
           enrollment.course.title,
-        durationHours:
-          enrollment.course.durationHours,
+        durationHours,
         trainingStartDate,
+        trainingEndDate,
         completionDate:
           finalDate,
       });
@@ -923,9 +972,10 @@ async function issue(
             enrollment.course.title,
 
           durationHoursSnapshot:
-            enrollment.course.durationHours,
+            durationHours,
 
           trainingStartDate,
+          trainingEndDate,
 
           completionDate:
             finalDate,
@@ -964,7 +1014,8 @@ async function issue(
 
         trainingPeriod:
           formatTrainingPeriod(
-            trainingStartDate
+            trainingStartDate,
+            trainingEndDate
           ),
       }
     );
@@ -1033,9 +1084,33 @@ async function downloadPdf(
 
     let hash;
 
-    if (certificate.trainingStartDate) {
+    if (certificate.trainingStartDate && certificate.trainingEndDate) {
       hash =
         computeCertificateHash({
+          numero:
+            certificate.numero,
+
+          studentName:
+            currentStudentName,
+
+          courseTitle:
+            certificate.courseTitleSnapshot,
+
+          durationHours:
+            certificate.durationHoursSnapshot,
+
+          trainingStartDate:
+            certificate.trainingStartDate,
+
+          trainingEndDate:
+            certificate.trainingEndDate,
+
+          completionDate:
+            certificate.completionDate,
+        });
+    } else if (certificate.trainingStartDate) {
+      hash =
+        computeCertificateHashV1({
           numero:
             certificate.numero,
 
@@ -1132,6 +1207,9 @@ async function downloadPdf(
         trainingStartDate:
           certificate.trainingStartDate,
 
+        trainingEndDate:
+          certificate.trainingEndDate,
+
         numero:
           certificate.numero,
 
@@ -1203,10 +1281,35 @@ async function verify(
     let recomputedHash;
 
     if (
-      certificate.trainingStartDate
+      certificate.trainingStartDate &&
+      certificate.trainingEndDate
     ) {
       recomputedHash =
         computeCertificateHash({
+          numero:
+            certificate.numero,
+
+          studentName:
+            currentStudentName,
+
+          courseTitle:
+            certificate.courseTitleSnapshot,
+
+          durationHours:
+            certificate.durationHoursSnapshot,
+
+          trainingStartDate:
+            certificate.trainingStartDate,
+
+          trainingEndDate:
+            certificate.trainingEndDate,
+
+          completionDate:
+            certificate.completionDate,
+        });
+    } else if (certificate.trainingStartDate) {
+      recomputedHash =
+        computeCertificateHashV1({
           numero:
             certificate.numero,
 
@@ -1303,9 +1406,13 @@ async function verify(
       trainingStartDate:
         certificate.trainingStartDate,
 
+      trainingEndDate:
+        certificate.trainingEndDate,
+
       trainingPeriod:
         formatTrainingPeriod(
-          certificate.trainingStartDate
+          certificate.trainingStartDate,
+          certificate.trainingEndDate
         ),
 
       completionDate:

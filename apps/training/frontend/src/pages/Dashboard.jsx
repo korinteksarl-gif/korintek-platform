@@ -27,6 +27,19 @@ export default function Dashboard() {
 
   const [showForm, setShowForm] = useState(false);
 
+  // ---------------------------------------------------------------------------
+  // CERTIFICATE ISSUE FORM
+  // ---------------------------------------------------------------------------
+
+  const [certificateEnrollment, setCertificateEnrollment] = useState(null);
+  const [certificateForm, setCertificateForm] = useState({
+    trainingStartDate: '',
+    trainingEndDate: '',
+    durationHours: '',
+    completionDate: '',
+  });
+  const [issuingCertificate, setIssuingCertificate] = useState(false);
+
   const [form, setForm] = useState({
     nom: '',
     prenom: '',
@@ -155,19 +168,78 @@ export default function Dashboard() {
   // ISSUE CERTIFICATE
   // ---------------------------------------------------------------------------
 
-  async function issueCertificate(enrollmentId) {
+  function toDateInputValue(value) {
+    if (!value) return '';
+    return String(value).slice(0, 10);
+  }
+
+  function openCertificateIssue(enrollment) {
+    const today = new Date().toISOString().slice(0, 10);
+    const sessionStart = toDateInputValue(enrollment.session?.startDate);
+    const sessionEnd = toDateInputValue(enrollment.session?.endDate);
+
+    setCertificateEnrollment(enrollment);
+    setCertificateForm({
+      trainingStartDate: sessionStart || today,
+      trainingEndDate: sessionEnd || sessionStart || today,
+      durationHours: String(enrollment.course?.durationHours ?? ''),
+      completionDate: today,
+    });
+  }
+
+  function closeCertificateIssue() {
+    if (issuingCertificate) return;
+    setCertificateEnrollment(null);
+  }
+
+  async function issueCertificate() {
+    if (!certificateEnrollment) return;
+
+    const {
+      trainingStartDate,
+      trainingEndDate,
+      durationHours,
+      completionDate,
+    } = certificateForm;
+
+    if (!trainingStartDate || !trainingEndDate || !durationHours || !completionDate) {
+      alert('Veuillez renseigner la période de formation, le nombre d’heures et la date d’obtention.');
+      return;
+    }
+
+    if (trainingEndDate < trainingStartDate) {
+      alert('La date de fin ne peut pas être antérieure à la date de début.');
+      return;
+    }
+
+    if (Number(durationHours) <= 0) {
+      alert("Le nombre d'heures doit être supérieur à 0.");
+      return;
+    }
+
+    setIssuingCertificate(true);
+
     try {
       await apiClient.post(
         '/certificates/issue',
-        { enrollmentId }
+        {
+          enrollmentId: certificateEnrollment.id,
+          trainingStartDate,
+          trainingEndDate,
+          durationHours: Number(durationHours),
+          completionDate,
+        }
       );
 
+      setCertificateEnrollment(null);
       await load();
     } catch (err) {
       alert(
         err.response?.data?.error ||
         'Erreur lors de la délivrance.'
       );
+    } finally {
+      setIssuingCertificate(false);
     }
   }
 
@@ -878,7 +950,7 @@ export default function Dashboard() {
                           <button
                             type="button"
                             onClick={() =>
-                              issueCertificate(e.id)
+                              openCertificateIssue(e)
                             }
                             className="text-xs bg-korintek-teal text-white rounded-full px-3 py-1"
                           >
@@ -926,6 +998,112 @@ export default function Dashboard() {
           </div>
 
         </section>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* CERTIFICATE ISSUE MODAL                                          */}
+        {/* ----------------------------------------------------------------- */}
+
+        {certificateEnrollment && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="px-6 py-5 bg-korintek-navy text-white">
+                <p className="text-xs uppercase tracking-widest text-korintek-teal font-semibold">
+                  Génération de l’attestation
+                </p>
+                <h2 className="font-heading font-bold text-lg mt-1">
+                  {certificateEnrollment.student?.prenom} {certificateEnrollment.student?.nom}
+                </h2>
+                <p className="text-xs text-slate-300 mt-1">
+                  {certificateEnrollment.course?.title}
+                </p>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="rounded-xl border border-korintek-gold/30 bg-amber-50 px-4 py-3 text-xs text-slate-600">
+                  Ces informations sont <strong>définies manuellement pour cette attestation</strong>.
+                  Elles seront enregistrées dans le certificat et utilisées pour le PDF et la vérification.
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-korintek-ink mb-3">Période de formation</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-xs text-slate-500">
+                      Date de début
+                      <input
+                        required
+                        type="date"
+                        value={certificateForm.trainingStartDate}
+                        onChange={(e) => setCertificateForm({ ...certificateForm, trainingStartDate: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+
+                    <label className="text-xs text-slate-500">
+                      Date de fin
+                      <input
+                        required
+                        type="date"
+                        value={certificateForm.trainingEndDate}
+                        min={certificateForm.trainingStartDate || undefined}
+                        onChange={(e) => setCertificateForm({ ...certificateForm, trainingEndDate: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Le PDF affichera automatiquement les mois concernés, par exemple : AOÛT 2026 - SEPTEMBRE 2026.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-xs text-slate-500">
+                    Nombre d’heures de formation
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={certificateForm.durationHours}
+                      onChange={(e) => setCertificateForm({ ...certificateForm, durationHours: e.target.value })}
+                      placeholder="40"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                    />
+                  </label>
+
+                  <label className="text-xs text-slate-500">
+                    Date d’obtention
+                    <input
+                      required
+                      type="date"
+                      value={certificateForm.completionDate}
+                      onChange={(e) => setCertificateForm({ ...certificateForm, completionDate: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeCertificateIssue}
+                    disabled={issuingCertificate}
+                    className="px-4 py-2 rounded-lg text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={issueCertificate}
+                    disabled={issuingCertificate}
+                    className="px-5 py-2 rounded-lg bg-korintek-teal text-white text-sm font-medium hover:bg-korintek-tealDark disabled:opacity-50"
+                  >
+                    {issuingCertificate ? 'Génération...' : 'Générer l’attestation'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
 
