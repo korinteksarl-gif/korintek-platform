@@ -57,7 +57,7 @@ export default function Dashboard() {
   async function archiveCertificate(certificate) {
     const reason = window.prompt(
       `Motif d'archivage de l'attestation ${certificate.numero} :`,
-      'Erreur sur les informations de l'attestation'
+      "Erreur sur les informations de l'attestation"
     );
 
     if (reason === null) return;
