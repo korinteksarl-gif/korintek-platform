@@ -17,11 +17,6 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-// Render place l'API derrière un reverse proxy et transmet X-Forwarded-For.
-// Cette configuration permet à Express et express-rate-limit d'utiliser
-// correctement l'IP client derrière le proxy.
-app.set('trust proxy', 1);
-
 // ============================================================
 // MIDDLEWARES
 // ============================================================

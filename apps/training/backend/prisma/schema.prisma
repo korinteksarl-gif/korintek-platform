@@ -162,10 +162,6 @@ model Certificate {
   // Elle sert de référence pour calculer la période affichée.
   trainingStartDate     DateTime?  @db.Date
 
-  // Date réelle de fin de la période de formation.
-  // Les nouvelles attestations la définissent manuellement.
-  trainingEndDate       DateTime?  @db.Date
-
   // Date d'obtention / de délivrance de l'attestation.
   completionDate        DateTime   @db.Date
 
@@ -173,12 +169,6 @@ model Certificate {
   certificateHash       String?    @unique
 
   issuedAt              DateTime   @default(now())
-
-  // Archivage d'une attestation erronée. Une attestation archivée n'est plus
-  // considérée comme valide publiquement et peut être rééditée depuis la même inscription.
-  archivedAt             DateTime?  @db.Timestamptz(3)
-  archivedBy             String?
-  archiveReason          String?    @db.Text
 
   @@map("certificates")
 }

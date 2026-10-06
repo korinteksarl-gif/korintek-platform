@@ -1,5 +1,5 @@
 const express = require('express');
-const { issue, downloadPdf, verify, list, archive, remove } = require('../controllers/certificates.controller');
+const { issue, downloadPdf, verify, list } = require('../controllers/certificates.controller');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { verifyLimiter } = require('../middleware/rateLimit');
 
@@ -13,11 +13,5 @@ router.get('/:numero/pdf', verifyLimiter, downloadPdf);
 router.use(authenticate);
 router.get('/', requireRole(['SUPER_ADMIN', 'ADMIN', 'TRAINER']), list);
 router.post('/issue', requireRole(['SUPER_ADMIN', 'ADMIN', 'TRAINER']), issue);
-
-// Archivage réservé à l'équipe d'administration.
-router.post('/:numero/archive', requireRole(['SUPER_ADMIN', 'ADMIN']), archive);
-
-// Suppression définitive réservée au SUPER_ADMIN et uniquement après archivage.
-router.delete('/:numero', requireRole(['SUPER_ADMIN']), remove);
 
 module.exports = router;

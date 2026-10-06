@@ -76,7 +76,6 @@ export default function Verify() {
                     <div className="p-4 text-sm space-y-1.5">
                       <p><span className="text-slate-500">Titulaire</span><br /><strong className="text-korintek-ink">{result.studentName}</strong></p>
                       <p><span className="text-slate-500">Formation</span><br /><strong className="text-korintek-ink">{result.courseTitle}</strong></p>
-                      <p><span className="text-slate-500">Période de formation</span> · {result.trainingPeriod || '—'}</p>
                       <p><span className="text-slate-500">Durée</span> · {result.durationHours}h</p>
                       <p><span className="text-slate-500">Date d'obtention</span> · {new Date(result.completionDate).toLocaleDateString('fr-FR')}</p>
 

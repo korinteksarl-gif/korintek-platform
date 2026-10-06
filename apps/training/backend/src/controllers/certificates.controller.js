@@ -19,6 +19,11 @@ const SERIF_PATH = path.join(
   '../assets/cormorant-bold.ttf'
 );
 
+const SIGNATURE_PATH = path.join(
+  __dirname,
+  '../assets/signature_kodjo.png'
+);
+
 const SCALE = 72 / 150;
 const PAGE_W = 1754 * SCALE;
 const PAGE_H = 1240 * SCALE;
@@ -144,25 +149,21 @@ function addOneMonth(date) {
  * Exemple :
  * 03 août 2026 -> AOÛT 2026 - SEPTEMBRE 2026
  */
-function formatTrainingPeriod(startDate, endDate) {
+function formatTrainingPeriod(startDate) {
   if (!startDate) {
     return '';
   }
 
-  // Pour les anciennes attestations, la date de fin n'existait pas :
-  // on conserve l'ancien comportement (un mois après le début).
-  const effectiveEndDate = endDate || addOneMonth(startDate);
+  const endDate = addOneMonth(startDate);
 
-  if (!effectiveEndDate) {
+  if (!endDate) {
     return '';
   }
 
   const startMonth = formatMonthYear(startDate);
-  const endMonth = formatMonthYear(effectiveEndDate);
+  const endMonth = formatMonthYear(endDate);
 
-  return startMonth === endMonth
-    ? startMonth
-    : `${startMonth} - ${endMonth}`;
+  return `${startMonth} - ${endMonth}`;
 }
 
 /**
@@ -271,35 +272,6 @@ function computeCertificateHash({
   courseTitle,
   durationHours,
   trainingStartDate,
-  trainingEndDate,
-  completionDate,
-}) {
-  const payload = [
-    numero,
-    studentName,
-    courseTitle,
-    durationHours,
-    formatDateForHash(trainingStartDate),
-    formatDateForHash(trainingEndDate),
-    formatDateForHash(completionDate),
-  ].join('|');
-
-  return crypto
-    .createHash('sha256')
-    .update(payload)
-    .digest('hex');
-}
-
-/**
- * Hash V1 : utilisé par les attestations déjà créées avant l'ajout
- * de la date de fin de formation.
- */
-function computeCertificateHashV1({
-  numero,
-  studentName,
-  courseTitle,
-  durationHours,
-  trainingStartDate,
   completionDate,
 }) {
   const payload = [
@@ -357,18 +329,8 @@ async function ensureHash(certificate) {
 
   let hash;
 
-  if (certificate.trainingStartDate && certificate.trainingEndDate) {
+  if (certificate.trainingStartDate) {
     hash = computeCertificateHash({
-      numero: certificate.numero,
-      studentName: certificate.studentNameSnapshot,
-      courseTitle: certificate.courseTitleSnapshot,
-      durationHours: certificate.durationHoursSnapshot,
-      trainingStartDate: certificate.trainingStartDate,
-      trainingEndDate: certificate.trainingEndDate,
-      completionDate: certificate.completionDate,
-    });
-  } else if (certificate.trainingStartDate) {
-    hash = computeCertificateHashV1({
       numero: certificate.numero,
       studentName: certificate.studentNameSnapshot,
       courseTitle: certificate.courseTitleSnapshot,
@@ -415,7 +377,6 @@ async function generateCertificatePdf({
   durationHours,
   completionDate,
   trainingStartDate,
-  trainingEndDate,
   numero,
   hash,
 }) {
@@ -592,8 +553,7 @@ async function generateCertificatePdf({
 
   const periodeStr =
     formatTrainingPeriod(
-      trainingStartDate,
-      trainingEndDate
+      trainingStartDate
     );
 
   const {
@@ -628,6 +588,28 @@ async function generateCertificatePdf({
   // ---------------------------------------------------------------------------
   // SIGNATURE
   // ---------------------------------------------------------------------------
+
+  // Signature manuscrite transparente de Kodjo Tsogbe.
+  // Elle est volontairement placée au-dessus du nom et reste suffisamment
+  // visible à l'impression, tout en laissant le cachet physique être apposé
+  // après impression.
+  const signatureImage =
+    await pdfDoc.embedPng(
+      fs.readFileSync(SIGNATURE_PATH)
+    );
+
+  const signatureWidthPx = 235;
+  const signatureHeightPx = 67;
+  const signatureLeftPx = 219;
+  const signatureTopPx = 884;
+
+  page.drawImage(signatureImage, {
+    x: signatureLeftPx * SCALE,
+    y: PAGE_H -
+      (signatureTopPx + signatureHeightPx) * SCALE,
+    width: signatureWidthPx * SCALE,
+    height: signatureHeightPx * SCALE,
+  });
 
   const sigNameWidth =
     bold.widthOfTextAtSize(
@@ -810,10 +792,7 @@ async function issue(
   try {
     const {
       enrollmentId,
-      trainingStartDate: trainingStartDateRaw,
-      trainingEndDate: trainingEndDateRaw,
-      durationHours: durationHoursRaw,
-      completionDate: completionDateRaw,
+      completionDate,
     } = req.body;
 
     if (!enrollmentId) {
@@ -847,12 +826,7 @@ async function issue(
       });
     }
 
-    const archivedExistingCertificate =
-      enrollment.certificate?.archivedAt
-        ? enrollment.certificate
-        : null;
-
-    if (enrollment.certificate && !archivedExistingCertificate) {
+    if (enrollment.certificate) {
       return res.status(409).json({
         error:
           'Une attestation existe déjà pour cette inscription.',
@@ -874,57 +848,56 @@ async function issue(
     }
 
     // -------------------------------------------------------------------------
-    // PARAMÈTRES MANUELS DE L'ATTESTATION
+    // SESSION DE FORMATION
     // -------------------------------------------------------------------------
 
-    // Ces trois valeurs sont volontairement indépendantes de la formation
-    // et de la session : elles décrivent exactement ce qui doit apparaître
-    // sur l'attestation délivrée à cet apprenant.
+    let trainingSession =
+      enrollment.session;
+
+    if (!trainingSession) {
+      trainingSession =
+        await prisma.session.findFirst({
+          where: {
+            courseId:
+              enrollment.courseId,
+            active: true,
+          },
+          orderBy: {
+            startDate: 'asc',
+          },
+        });
+    }
+
+    if (
+      !trainingSession ||
+      !trainingSession.startDate
+    ) {
+      return res.status(400).json({
+        error:
+          "Impossible de délivrer l'attestation : aucune session de formation avec une date de début n'est disponible pour cette formation.",
+      });
+    }
+
     const trainingStartDate =
-      trainingStartDateRaw
-        ? new Date(trainingStartDateRaw)
-        : null;
+      trainingSession.startDate;
 
-    const trainingEndDate =
-      trainingEndDateRaw
-        ? new Date(trainingEndDateRaw)
-        : null;
-
-    const durationHours =
-      Number(durationHoursRaw);
+    // -------------------------------------------------------------------------
+    // DATE D'OBTENTION
+    // -------------------------------------------------------------------------
 
     const finalDate =
-      completionDateRaw
-        ? new Date(completionDateRaw)
-        : null;
+      completionDate
+        ? new Date(completionDate)
+        : new Date();
 
-    if (!trainingStartDate || Number.isNaN(trainingStartDate.getTime())) {
+    if (
+      Number.isNaN(
+        finalDate.getTime()
+      )
+    ) {
       return res.status(400).json({
-        error: 'La date de début de la période de formation est requise et doit être valide.',
-      });
-    }
-
-    if (!trainingEndDate || Number.isNaN(trainingEndDate.getTime())) {
-      return res.status(400).json({
-        error: 'La date de fin de la période de formation est requise et doit être valide.',
-      });
-    }
-
-    if (trainingEndDate < trainingStartDate) {
-      return res.status(400).json({
-        error: 'La date de fin de la formation ne peut pas être antérieure à la date de début.',
-      });
-    }
-
-    if (!Number.isInteger(durationHours) || durationHours <= 0) {
-      return res.status(400).json({
-        error: "Le nombre d'heures de formation est requis et doit être supérieur à 0.",
-      });
-    }
-
-    if (!finalDate || Number.isNaN(finalDate.getTime())) {
-      return res.status(400).json({
-        error: "La date d'obtention est requise et doit être valide.",
+        error:
+          "La date d'obtention fournie est invalide.",
       });
     }
 
@@ -952,9 +925,9 @@ async function issue(
         studentName,
         courseTitle:
           enrollment.course.title,
-        durationHours,
+        durationHours:
+          enrollment.course.durationHours,
         trainingStartDate,
-        trainingEndDate,
         completionDate:
           finalDate,
       });
@@ -963,41 +936,31 @@ async function issue(
     // CREATION CERTIFICAT
     // -------------------------------------------------------------------------
 
-    // Si l'ancienne attestation a été archivée pour erreur, on réutilise
-    // l'enregistrement afin de conserver l'historique d'audit sans créer
-    // plusieurs certificats pour la même inscription. Le nouveau numéro
-    // devient alors le seul numéro actif pour cette inscription.
-    const certificate = archivedExistingCertificate
-      ? await prisma.certificate.update({
-          where: { id: archivedExistingCertificate.id },
-          data: {
-            numero,
-            studentNameSnapshot: studentName,
-            courseTitleSnapshot: enrollment.course.title,
-            durationHoursSnapshot: durationHours,
-            trainingStartDate,
-            trainingEndDate,
-            completionDate: finalDate,
-            certificateHash: hash,
-            issuedAt: new Date(),
-            archivedAt: null,
-            archivedBy: null,
-            archiveReason: null,
-          },
-        })
-      : await prisma.certificate.create({
-          data: {
-            enrollmentId,
-            numero,
-            studentNameSnapshot: studentName,
-            courseTitleSnapshot: enrollment.course.title,
-            durationHoursSnapshot: durationHours,
-            trainingStartDate,
-            trainingEndDate,
-            completionDate: finalDate,
-            certificateHash: hash,
-          },
-        });
+    const certificate =
+      await prisma.certificate.create({
+        data: {
+          enrollmentId,
+
+          numero,
+
+          studentNameSnapshot:
+            studentName,
+
+          courseTitleSnapshot:
+            enrollment.course.title,
+
+          durationHoursSnapshot:
+            enrollment.course.durationHours,
+
+          trainingStartDate,
+
+          completionDate:
+            finalDate,
+
+          certificateHash:
+            hash,
+        },
+      });
 
     // -------------------------------------------------------------------------
     // MARQUER L'INSCRIPTION COMME TERMINEE
@@ -1014,20 +977,21 @@ async function issue(
 
     await logAction(
       req.user?.id,
-      archivedExistingCertificate
-        ? 'CERTIFICATE_REISSUED_AFTER_ARCHIVE'
-        : 'CERTIFICATE_ISSUED',
+      'CERTIFICATE_ISSUED',
       {
-        certificateId: certificate.id,
-        certificateNumber: certificate.numero,
-        previousCertificateNumber:
-          archivedExistingCertificate?.numero || null,
+        certificateId:
+          certificate.id,
+
+        certificateNumber:
+          certificate.numero,
+
         enrollmentId,
+
         trainingStartDate,
+
         trainingPeriod:
           formatTrainingPeriod(
-            trainingStartDate,
-            trainingEndDate
+            trainingStartDate
           ),
       }
     );
@@ -1074,10 +1038,10 @@ async function downloadPdf(
         },
       });
 
-    if (!certificate || certificate.archivedAt) {
+    if (!certificate) {
       return res.status(404).json({
         error:
-          'Attestation introuvable ou archivée.',
+          'Attestation introuvable.',
       });
     }
 
@@ -1096,33 +1060,9 @@ async function downloadPdf(
 
     let hash;
 
-    if (certificate.trainingStartDate && certificate.trainingEndDate) {
+    if (certificate.trainingStartDate) {
       hash =
         computeCertificateHash({
-          numero:
-            certificate.numero,
-
-          studentName:
-            currentStudentName,
-
-          courseTitle:
-            certificate.courseTitleSnapshot,
-
-          durationHours:
-            certificate.durationHoursSnapshot,
-
-          trainingStartDate:
-            certificate.trainingStartDate,
-
-          trainingEndDate:
-            certificate.trainingEndDate,
-
-          completionDate:
-            certificate.completionDate,
-        });
-    } else if (certificate.trainingStartDate) {
-      hash =
-        computeCertificateHashV1({
           numero:
             certificate.numero,
 
@@ -1219,9 +1159,6 @@ async function downloadPdf(
         trainingStartDate:
           certificate.trainingStartDate,
 
-        trainingEndDate:
-          certificate.trainingEndDate,
-
         numero:
           certificate.numero,
 
@@ -1277,11 +1214,11 @@ async function verify(
         },
       });
 
-    if (!certificate || certificate.archivedAt) {
+    if (!certificate) {
       return res.status(404).json({
         valid: false,
         error:
-          'Aucune attestation active ne correspond à ce numéro.',
+          'Aucune attestation ne correspond à ce numéro.',
       });
     }
 
@@ -1293,35 +1230,10 @@ async function verify(
     let recomputedHash;
 
     if (
-      certificate.trainingStartDate &&
-      certificate.trainingEndDate
+      certificate.trainingStartDate
     ) {
       recomputedHash =
         computeCertificateHash({
-          numero:
-            certificate.numero,
-
-          studentName:
-            currentStudentName,
-
-          courseTitle:
-            certificate.courseTitleSnapshot,
-
-          durationHours:
-            certificate.durationHoursSnapshot,
-
-          trainingStartDate:
-            certificate.trainingStartDate,
-
-          trainingEndDate:
-            certificate.trainingEndDate,
-
-          completionDate:
-            certificate.completionDate,
-        });
-    } else if (certificate.trainingStartDate) {
-      recomputedHash =
-        computeCertificateHashV1({
           numero:
             certificate.numero,
 
@@ -1418,13 +1330,9 @@ async function verify(
       trainingStartDate:
         certificate.trainingStartDate,
 
-      trainingEndDate:
-        certificate.trainingEndDate,
-
       trainingPeriod:
         formatTrainingPeriod(
-          certificate.trainingStartDate,
-          certificate.trainingEndDate
+          certificate.trainingStartDate
         ),
 
       completionDate:
@@ -1442,122 +1350,6 @@ async function verify(
 }
 
 // -----------------------------------------------------------------------------
-// ARCHIVE CERTIFICATE
-// -----------------------------------------------------------------------------
-
-async function archive(
-  req,
-  res,
-  next
-) {
-  try {
-    const { numero } = req.params;
-    const reason =
-      typeof req.body?.reason === 'string'
-        ? req.body.reason.trim().slice(0, 1000)
-        : '';
-
-    if (!reason) {
-      return res.status(400).json({
-        error: "Le motif d'archivage est requis.",
-      });
-    }
-
-    const certificate = await prisma.certificate.findUnique({
-      where: { numero },
-    });
-
-    if (!certificate) {
-      return res.status(404).json({
-        error: 'Attestation introuvable.',
-      });
-    }
-
-    if (certificate.archivedAt) {
-      return res.status(409).json({
-        error: 'Cette attestation est déjà archivée.',
-      });
-    }
-
-    const archived = await prisma.certificate.update({
-      where: { id: certificate.id },
-      data: {
-        archivedAt: new Date(),
-        archivedBy: req.user?.id || null,
-        archiveReason: reason,
-      },
-    });
-
-    await logAction(
-      req.user?.id,
-      'CERTIFICATE_ARCHIVED',
-      {
-        certificateId: certificate.id,
-        certificateNumber: certificate.numero,
-        enrollmentId: certificate.enrollmentId,
-        reason,
-      }
-    );
-
-    res.json({ certificate: archived });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// -----------------------------------------------------------------------------
-// PERMANENT DELETE
-// -----------------------------------------------------------------------------
-
-async function remove(
-  req,
-  res,
-  next
-) {
-  try {
-    const { numero } = req.params;
-
-    const certificate = await prisma.certificate.findUnique({
-      where: { numero },
-    });
-
-    if (!certificate) {
-      return res.status(404).json({
-        error: 'Attestation introuvable.',
-      });
-    }
-
-    if (!certificate.archivedAt) {
-      return res.status(409).json({
-        error: "Pour éviter une suppression accidentelle, l'attestation doit d'abord être archivée.",
-      });
-    }
-
-    await logAction(
-      req.user?.id,
-      'CERTIFICATE_DELETED',
-      {
-        certificateId: certificate.id,
-        certificateNumber: certificate.numero,
-        enrollmentId: certificate.enrollmentId,
-        archiveReason: certificate.archiveReason,
-      }
-    );
-
-    await prisma.certificate.delete({
-      where: { id: certificate.id },
-    });
-
-    res.json({
-      success: true,
-      message: 'Attestation supprimée définitivement.',
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// -----------------------------------------------------------------------------
 // LIST
 // -----------------------------------------------------------------------------
 
@@ -1567,13 +1359,8 @@ async function list(
   next
 ) {
   try {
-    const includeArchived =
-      req.query.includeArchived === 'true' &&
-      req.user?.role === 'SUPER_ADMIN';
-
     const certificates =
       await prisma.certificate.findMany({
-        where: includeArchived ? undefined : { archivedAt: null },
         orderBy: {
           issuedAt: 'desc',
         },
@@ -1596,6 +1383,4 @@ module.exports = {
   downloadPdf,
   verify,
   list,
-  archive,
-  remove,
 };
