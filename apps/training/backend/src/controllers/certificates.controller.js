@@ -586,27 +586,23 @@ async function generateCertificatePdf({
   );
 
   // ---------------------------------------------------------------------------
-  // SIGNATURE
+  // SIGNATURE MANUSCRITE
   // ---------------------------------------------------------------------------
 
-  // Signature manuscrite transparente de Kodjo Tsogbe.
-  // Elle est volontairement placée au-dessus du nom et reste suffisamment
-  // visible à l'impression, tout en laissant le cachet physique être apposé
-  // après impression.
-  const signatureImage =
-    await pdfDoc.embedPng(
-      fs.readFileSync(SIGNATURE_PATH)
-    );
+  // La signature est intégrée au PDF avant impression.
+  // Le cachet KORINTEK reste apposé physiquement après impression.
+  const signatureImage = await pdfDoc.embedPng(
+    fs.readFileSync(SIGNATURE_PATH)
+  );
 
-  const signatureWidthPx = 235;
-  const signatureHeightPx = 67;
-  const signatureLeftPx = 219;
-  const signatureTopPx = 884;
+  const signatureLeftPx = 197;
+  const signatureTopPx = 864;
+  const signatureWidthPx = 280;
+  const signatureHeightPx = 80;
 
   page.drawImage(signatureImage, {
     x: signatureLeftPx * SCALE,
-    y: PAGE_H -
-      (signatureTopPx + signatureHeightPx) * SCALE,
+    y: PAGE_H - (signatureTopPx + signatureHeightPx) * SCALE,
     width: signatureWidthPx * SCALE,
     height: signatureHeightPx * SCALE,
   });
@@ -621,8 +617,8 @@ async function generateCertificatePdf({
     x: sigX,
     y: sigNameY,
   } = toPt(
-    205 +
-      (264 -
+    signatureLeftPx +
+      (signatureWidthPx -
         sigNameWidth) / 2,
     958
   );
@@ -652,8 +648,8 @@ async function generateCertificatePdf({
     x: titleX,
     y: titleY,
   } = toPt(
-    205 +
-      (264 -
+    signatureLeftPx +
+      (signatureWidthPx -
         sigTitleWidth) / 2,
     1004
   );
