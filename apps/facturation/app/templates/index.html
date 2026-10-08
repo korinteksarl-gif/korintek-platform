@@ -311,11 +311,11 @@
 <body>
 <div class="topbar no-print">
   <span class="tb-user">{{ user.name }} ({{ user.email }})</span>
-  <span class="tb-role {{ 'admin' if user.is_admin else 'employe' }}">{{ 'Administrateur' if user.is_admin else 'Employé' }}</span>
+  <span class="tb-role admin">{{ user.role }}</span>
   <a href="/logout" class="tb-logout">Déconnexion</a>
 </div>
 <div class="app">
-<script>window.__CURRENT_USER__ = { email: "{{ user.email }}", isAdmin: {{ 'true' if user.is_admin else 'false' }} };</script>
+<script>window.__CURRENT_USER__ = { email: "{{ user.email }}", role: "{{ user.role }}", isAdmin: {{ 'true' if user.is_admin else 'false' }} };</script>
 
   <!-- ============ LEFT: CONTROLS ============ -->
   <div class="panel no-print">
@@ -795,6 +795,8 @@ const CATALOG = {
 };
 
 let state = {
+  editingId: null,
+
   packQty: { diag:0, essentiel:0, premium:0 },
   customLines: [],
   catalogLines: [],
@@ -1381,17 +1383,26 @@ document.getElementById('save-doc').addEventListener('click', async ()=>{
   };
 
   try{
-    const res = await fetch('/api/documents', {
-      method:'POST',
+    const endpoint = state.editingId ? `/api/documents/${state.editingId}` : '/api/documents';
+    const res = await fetch(endpoint, {
+      method: state.editingId ? 'PUT' : 'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(doc)
     });
     if(res.ok){
       const saved = await res.json();
-      doc.id = saved.id;
+      doc.id = state.editingId || saved.id;
+      state.editingId = null;
+      document.getElementById('save-doc').textContent = '💾 Enregistrer dans l’historique';
+    } else {
+      const err = await res.json().catch(()=>({}));
+      alert('Erreur: ' + (err.detail || 'opération impossible'));
+      return;
     }
   }catch(e){ console.error('Erreur sauvegarde document', e); }
-  state.history.unshift(doc);
+  const existingIndex = state.history.findIndex(x => String(x.id) === String(doc.id));
+  if(existingIndex >= 0) state.history[existingIndex] = {...state.history[existingIndex], ...doc};
+  else state.history.unshift(doc);
 
   const btn = document.getElementById('save-doc');
   const old = btn.textContent; btn.textContent = '✓ Document enregistré'; setTimeout(()=>btn.textContent=old, 1600);
@@ -1415,7 +1426,7 @@ function renderHistoryList(){
         <span class="badge ${doc.type}">${doc.type}</span>
       </div>
       <div class="sub">${doc.client} — ${fmt(doc.total)}</div>
-      <div class="sub">${doc.date ? new Date(doc.date).toLocaleDateString('fr-FR') : ''}</div>
+      <div class="sub">${doc.date ? new Date(doc.date).toLocaleDateString('fr-FR') : ''} · <strong>${doc.status || 'DRAFT'}</strong></div>
       ${creator}`;
     item.addEventListener('click', ()=> loadDocIntoForm(doc));
     el.appendChild(item);
@@ -1423,6 +1434,8 @@ function renderHistoryList(){
 }
 
 function loadDocIntoForm(doc){
+  state.editingId = doc.id;
+  document.getElementById('save-doc').textContent = '💾 Enregistrer les modifications';
   document.querySelector(`input[name=doctype][value="${doc.type}"]`).checked = true;
   updateDoctypeUI();
   document.getElementById('docnum').value = doc.num;
@@ -1459,6 +1472,8 @@ function loadDocIntoForm(doc){
 // ---- print / reset ----
 document.getElementById('print-btn').addEventListener('click', ()=> window.print());
 document.getElementById('reset-btn').addEventListener('click', ()=>{
+  state.editingId = null;
+  document.getElementById('save-doc').textContent = '💾 Enregistrer dans l’historique';
   state.packQty = { diag:0, essentiel:0, premium:0 };
   state.customLines = [];
   state.catalogLines = [];
@@ -1504,7 +1519,7 @@ async function init(){
   renderPreview();
 
   // restreindre l'onglet Société en lecture seule pour les employés (admin uniquement)
-  if(!(window.__CURRENT_USER__ && window.__CURRENT_USER__.isAdmin)){
+  if(!(['SUPER_ADMIN','ADMIN','AUDITOR'].includes(window.__CURRENT_USER__?.role))){
     const settingsTab = document.getElementById('tab-settings');
     settingsTab.querySelectorAll('input, button').forEach(el => el.disabled = true);
     const note = document.createElement('p');

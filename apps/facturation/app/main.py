@@ -1,214 +1,174 @@
-import os
-import secrets
+import os, secrets
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-
 from . import auth, db
 
-db.init_db()
+db.init_db(); app=FastAPI(title='KORINTEK — Facturation')
+app.add_middleware(SessionMiddleware,secret_key=os.environ.get('SESSION_SECRET_KEY',secrets.token_hex(32)),same_site='lax',https_only=True)
+templates=Jinja2Templates(directory=os.path.join(os.path.dirname(__file__),'templates'))
 
-app = FastAPI(title="KORINTEK — Facturation")
+def get_current_user(request): return request.session.get('user')
+def require_user(request):
+    u=get_current_user(request)
+    if not u: raise HTTPException(401,'Non authentifié')
+    return u
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET_KEY", secrets.token_hex(32)),
-    same_site="lax",
-    https_only=True,
-)
+def require_perm(permission):
+    def dep(user=Depends(require_user)):
+        if permission not in auth.role_permissions(user['role']): raise HTTPException(403,'Droits insuffisants')
+        return user
+    return dep
 
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+@app.get('/login')
+def login(request):
+    state=secrets.token_urlsafe(16); request.session['auth_state']=state; return RedirectResponse(auth.get_auth_url(state))
 
+@app.get('/auth/callback')
+def auth_callback(request:Request,code:str=None,state:str=None,error:str=None):
+    if error: raise HTTPException(400,f'Erreur Entra ID: {error}')
+    if not code or state != request.session.get('auth_state'): raise HTTPException(400,'Requête d’authentification invalide')
+    result=auth.acquire_token_by_code(code); claims=result.get('id_token_claims',{}); email=(claims.get('preferred_username') or claims.get('email') or '').lower(); name=claims.get('name',email)
+    if not email: raise HTTPException(400,'Impossible de récupérer l’email')
+    existing=db.get_user(email); bootstrap=auth.is_bootstrap_super_admin(email)
+    u=db.upsert_user(email,name,bootstrap_super=bootstrap)
+    # ADMIN_EMAILS remains an emergency bootstrap: it cannot demote an explicitly managed account.
+    role=u['role']
+    if bootstrap and not existing: role='SUPER_ADMIN'
+    request.session['user']={'email':email,'name':name,'role':role,'is_admin':role in {'SUPER_ADMIN','ADMIN'}}
+    db.audit(email,role,'LOGIN','USER',email,{'name':name})
+    return RedirectResponse('/')
 
-# ----------------------------------------------------------------------
-# Dépendance : utilisateur connecté (redirige vers /login sinon)
-# ----------------------------------------------------------------------
+@app.get('/logout')
+def logout(request):
+    u=get_current_user(request)
+    if u: db.audit(u['email'],u['role'],'LOGOUT','USER',u['email'])
+    request.session.clear(); return RedirectResponse(auth.get_logout_url())
 
-def get_current_user(request: Request):
-    user = request.session.get("user")
-    if not user:
-        return None
-    return user
+@app.get('/')
+def index(request):
+    u=get_current_user(request)
+    if not u:return RedirectResponse('/login')
+    return templates.TemplateResponse('index.html',{'request':request,'user':u})
 
+@app.get('/api/me')
+def api_me(user=Depends(require_user)): return user
 
-def require_user(request: Request):
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Non authentifié")
-    return user
+@app.get('/api/settings')
+def api_get_settings(user=Depends(require_user)): return db.get_settings()
 
+@app.post('/api/settings')
+async def api_save_settings(request:Request,user=Depends(require_perm('settings'))):
+    data=await request.json(); db.save_settings(data); db.audit(user['email'],user['role'],'UPDATE_SETTINGS','SETTINGS','1'); return {'ok':True}
 
-# ----------------------------------------------------------------------
-# Auth routes
-# ----------------------------------------------------------------------
+@app.get('/api/users')
+def api_users(user=Depends(require_perm('users'))): return db.list_users()
 
-@app.get("/login")
-def login(request: Request):
-    state = secrets.token_urlsafe(16)
-    request.session["auth_state"] = state
-    return RedirectResponse(auth.get_auth_url(state))
+@app.patch('/api/users/{email}/role')
+async def api_user_role(email:str,request:Request,user=Depends(require_perm('users'))):
+    data=await request.json(); role=data.get('role')
+    if email.lower()==user['email'].lower() and role!='SUPER_ADMIN': raise HTTPException(400,'Le Super Admin ne peut pas se retirer lui-même ce rôle.')
+    db.set_user_role(email,role); db.audit(user['email'],user['role'],'CHANGE_ROLE','USER',email,{'new_role':role}); return {'ok':True}
 
+@app.get('/api/audit')
+def api_audit(user=Depends(require_perm('audit'))): return db.audit_list()
 
-@app.get("/auth/callback")
-def auth_callback(request: Request, code: str = None, state: str = None, error: str = None):
-    if error:
-        raise HTTPException(status_code=400, detail=f"Erreur Entra ID: {error}")
-    if not code or state != request.session.get("auth_state"):
-        raise HTTPException(status_code=400, detail="Requête d'authentification invalide")
-
-    result = auth.acquire_token_by_code(code)
-    claims = result.get("id_token_claims", {})
-    email = (claims.get("preferred_username") or claims.get("email") or "").lower()
-    name = claims.get("name", email)
-
-    if not email:
-        raise HTTPException(status_code=400, detail="Impossible de récupérer l'email du compte connecté")
-
-    db.upsert_user(email, name)
-
-    request.session["user"] = {
-        "email": email,
-        "name": name,
-        "is_admin": auth.is_admin(email),
-    }
-    return RedirectResponse("/")
-
-
-@app.get("/logout")
-def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(auth.get_logout_url())
-
-
-# ----------------------------------------------------------------------
-# Page principale
-# ----------------------------------------------------------------------
-
-@app.get("/")
-def index(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse("/login")
-    return templates.TemplateResponse("index.html", {"request": request, "user": user})
-
-
-# ----------------------------------------------------------------------
-# API — réglages société (lecture: tous ; écriture: admin uniquement)
-# ----------------------------------------------------------------------
-
-@app.get("/api/settings")
-def api_get_settings(user=Depends(require_user)):
-    return db.get_settings()
-
-
-@app.post("/api/settings")
-async def api_save_settings(request: Request, user=Depends(require_user)):
-    if not user["is_admin"]:
-        raise HTTPException(status_code=403, detail="Réservé à l'administrateur")
-    data = await request.json()
-    db.save_settings(data)
-    return {"ok": True}
-
-
-# ----------------------------------------------------------------------
-# API — documents (proformas / factures)
-# ----------------------------------------------------------------------
-
-@app.get("/api/documents")
+@app.get('/api/documents')
 def api_list_documents(user=Depends(require_user)):
-    return db.list_documents(user["email"], user["is_admin"])
+    return db.list_documents(user['email'],user['role'])
 
+@app.get('/api/documents/{doc_id}')
+def api_get_document(doc_id:int,user=Depends(require_user)):
+    d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    db.audit(user['email'],user['role'],'VIEW_DOCUMENT','DOCUMENT',doc_id)
+    return d
 
-@app.get("/api/documents/{doc_id}")
-def api_get_document(doc_id: int, user=Depends(require_user)):
-    doc = db.get_document(doc_id, user["email"], user["is_admin"])
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document introuvable")
-    return doc
+@app.post('/api/documents')
+async def api_create_document(request:Request,user=Depends(require_perm('create'))):
+    doc=await request.json(); doc_id=db.create_document(doc,user['email']); db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email']); db.audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type')}); return {'ok':True,'id':doc_id,'status':'DRAFT'}
 
+@app.put('/api/documents/{doc_id}')
+async def api_update_document(doc_id:int,request:Request,user=Depends(require_user)):
+    d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    allowed=user['role']=='SUPER_ADMIN' or user['role']=='ADMIN' or (user['role']=='OPERATOR' and d['created_by']==user['email'])
+    if not allowed: raise HTTPException(403,'Modification interdite')
+    if d['status'] in {'ARCHIVED','CANCELLED'}: raise HTTPException(409,'Document verrouillé')
+    doc=await request.json(); ok=db.update_document(doc_id,doc,user['email'])
+    if not ok: raise HTTPException(409,'Document non modifiable')
+    db.audit(user['email'],user['role'],'UPDATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num')}); return {'ok':True}
 
-@app.post("/api/documents")
-async def api_create_document(request: Request, user=Depends(require_user)):
-    doc = await request.json()
-    doc_id = db.create_document(doc, created_by=user["email"])
-    db.upsert_client(
-        doc.get("client"), doc.get("clientTel"), doc.get("clientEmail"),
-        doc.get("clientAdresse"), created_by=user["email"],
-    )
-    return {"ok": True, "id": doc_id}
+@app.post('/api/documents/{doc_id}/status')
+async def api_status(doc_id:int,request:Request,user=Depends(require_user)):
+    data=await request.json(); status=data.get('status'); d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    current=d.get('status') or 'DRAFT'
+    transitions={
+        'DRAFT': {'VALIDATED'},
+        'VALIDATED': {'ISSUED'},
+        'ISSUED': {'SENT'},
+        'SENT': set(),
+        'PARTIALLY_PAID': set(),
+        'PAID': set(),
+        'CANCELLED': set(),
+        'ARCHIVED': set(),
+    }
+    if status in {'PARTIALLY_PAID','PAID'}:
+        raise HTTPException(400,'Les statuts de paiement sont gérés automatiquement par l’enregistrement des paiements.')
+    if status=='ARCHIVED' and user['role']!='SUPER_ADMIN':
+        raise HTTPException(403,'Archivage réservé au Super Admin')
+    if status=='CANCELLED' and user['role']!='SUPER_ADMIN':
+        raise HTTPException(403,'Annulation administrative réservée au Super Admin')
+    if status in {'VALIDATED','ISSUED','SENT'} and user['role'] not in {'SUPER_ADMIN','ADMIN'}:
+        raise HTTPException(403,'Validation réservée à l’administration')
+    if status not in {'CANCELLED','ARCHIVED'} and status not in transitions.get(current,set()):
+        raise HTTPException(409,f'Transition de statut interdite: {current} → {status}')
+    if current in {'CANCELLED','ARCHIVED'}:
+        raise HTTPException(409,'Document verrouillé')
+    ok=db.change_status(doc_id,status,user['email'],data.get('reason'))
+    if not ok: raise HTTPException(409,'Impossible de changer le statut')
+    db.audit(user['email'],user['role'],status,'DOCUMENT',doc_id,{'reason':data.get('reason')})
+    return {'ok':True,'status':status}
 
+@app.delete('/api/documents/{doc_id}')
+def api_delete_document(doc_id:int,user=Depends(require_perm('delete'))):
+    d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    db.soft_delete(doc_id,user['email']); db.audit(user['email'],user['role'],'DELETE','DOCUMENT',doc_id,{'logical':True}); return {'ok':True,'status':'CANCELLED'}
 
-# ----------------------------------------------------------------------
-# API — base clients (autocomplétion)
-# ----------------------------------------------------------------------
+@app.get('/api/documents/{doc_id}/payments')
+def api_payments(doc_id:int,user=Depends(require_perm('payments'))):
+    d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    p=db.list_payments(doc_id); paid=sum(int(x['amount']) for x in p); return {'payments':p,'paid':paid,'balance':max(0,int(d['total'] or 0)-paid)}
 
-@app.get("/api/clients")
-def api_search_clients(q: str = "", user=Depends(require_user)):
-    if len(q.strip()) < 2:
-        return []
+@app.post('/api/documents/{doc_id}/payments')
+async def api_add_payment(doc_id:int,request:Request,user=Depends(require_perm('payments'))):
+    d=db.get_document(doc_id,user['email'],user['role'])
+    if not d: raise HTTPException(404,'Document introuvable')
+    data=await request.json(); amount=int(data.get('amount') or 0); balance=int(d['total'] or 0)-db.get_payment_summary(doc_id)
+    if amount<=0 or amount>balance: raise HTTPException(400,'Montant de paiement invalide')
+    pid=db.add_payment(doc_id,amount,data.get('method','Autre'),data.get('payment_date'),data.get('reference'),data.get('notes'),user['email']); newpaid=db.get_payment_summary(doc_id); newstatus='PAID' if newpaid>=int(d['total'] or 0) else 'PARTIALLY_PAID'; db.change_status(doc_id,newstatus,user['email']); db.audit(user['email'],user['role'],'CREATE_PAYMENT','PAYMENT',pid,{'document_id':doc_id,'amount':amount}); return {'ok':True,'payment_id':pid,'paid':newpaid,'balance':max(0,int(d['total'] or 0)-newpaid),'status':newstatus}
+
+@app.get('/api/clients')
+def api_search_clients(q:str='',user=Depends(require_user)):
+    if len(q.strip())<2:return []
     return db.search_clients(q.strip())
 
-
-# ----------------------------------------------------------------------
-# API — export comptable (Excel)
-# ----------------------------------------------------------------------
-
-@app.get("/api/documents/export.xlsx")
-def api_export_documents(start: str, end: str, user=Depends(require_user)):
+@app.get('/api/documents/export.xlsx')
+def api_export_documents(start:str,end:str,user=Depends(require_perm('export'))):
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font,PatternFill
     from io import BytesIO
-    from fastapi.responses import StreamingResponse
+    docs=db.get_documents_in_range(start,end,user['email'],user['role']); wb=Workbook(); ws=wb.active; ws.title='Factures'
+    ws.append(['Type','Numéro','Date','Client','Téléphone','HT (FCFA)','TVA','Retenue (%)','Net à payer (FCFA)','Statut','Créé par'])
+    for c in ws[1]: c.font=Font(bold=True,color='FFFFFF'); c.fill=PatternFill('solid',fgColor='0E2226')
+    for d in docs: ws.append([d['type'],d['num'],d['date'],d['client'],d['clientTel'],d['ht'],'Oui' if d['tvaOn'] else 'Non',d['retenuePct'],d['total'],d['status'],d['created_by']])
+    buf=BytesIO(); wb.save(buf); buf.seek(0); db.audit(user['email'],user['role'],'EXPORT_XLSX','DOCUMENT',None,{'start':start,'end':end,'count':len(docs)}); return StreamingResponse(buf,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="korintek_factures_{start}_a_{end}.xlsx"'})
 
-    docs = db.get_documents_in_range(start, end, user["email"], user["is_admin"])
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Factures"
-
-    headers = ["Type", "Numéro", "Date", "Client", "Téléphone", "HT (FCFA)",
-               "TVA appliquée", "Retenue (%)", "Net à payer (FCFA)", "Créé par"]
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="0E2226")
-
-    for d in docs:
-        ws.append([
-            d["type"], d["num"], d["date"], d["client"], d["clientTel"],
-            d["ht"], "Oui" if d["tvaOn"] else "Non", d["retenuePct"],
-            d["total"], d["created_by"],
-        ])
-
-    for col in ws.columns:
-        max_len = max((len(str(c.value)) for c in col if c.value is not None), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 40)
-
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    filename = f"korintek_factures_{start}_a_{end}.xlsx"
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ----------------------------------------------------------------------
-# API — tableau de bord
-# ----------------------------------------------------------------------
-
-@app.get("/api/dashboard/stats")
+@app.get('/api/dashboard/stats')
 def api_dashboard_stats(user=Depends(require_user)):
-    return db.get_dashboard_stats(user["email"], user["is_admin"])
-
-
-# ----------------------------------------------------------------------
-# Qui suis-je (pour affichage cote client)
-# ----------------------------------------------------------------------
-
-@app.get("/api/me")
-def api_me(user=Depends(require_user)):
-    return user
+    if user['role'] not in {'SUPER_ADMIN','ADMIN','AUDITOR'}: raise HTTPException(403,'Tableau de bord global réservé à l’administration/audit')
+    return db.get_dashboard_stats(user['email'],user['role'])
