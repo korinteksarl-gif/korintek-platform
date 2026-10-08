@@ -1,9 +1,12 @@
-import os, secrets
+import os, secrets, logging
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from . import auth, db
+
+logging.basicConfig(level=logging.INFO)
+logger=logging.getLogger('korintek.facturation')
 
 db.init_db(); app=FastAPI(title='KORINTEK — Facturation')
 app.add_middleware(SessionMiddleware,secret_key=os.environ.get('SESSION_SECRET_KEY',secrets.token_hex(32)),same_site='lax',https_only=True)
@@ -54,6 +57,26 @@ def index(request: Request):
 @app.get('/api/me')
 def api_me(user=Depends(require_user)): return user
 
+
+@app.get('/api/diagnostics')
+def api_diagnostics(user=Depends(require_user)):
+    if user['role'] != 'SUPER_ADMIN':
+        raise HTTPException(403, 'Diagnostic réservé au Super Admin')
+    try:
+        with db.get_conn() as conn:
+            cur=conn.cursor()
+            cur.execute('SELECT current_database(), current_user')
+            database, db_user = cur.fetchone()
+            cur.execute('SELECT COUNT(*) FROM documents')
+            document_count=cur.fetchone()[0]
+            cur.execute('SELECT COUNT(*) FROM users')
+            user_count=cur.fetchone()[0]
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='documents' ORDER BY ordinal_position")
+            columns=[r[0] for r in cur.fetchall()]
+        return {'ok':True,'database':database,'db_user':db_user,'document_count':document_count,'user_count':user_count,'documents_columns':columns}
+    except Exception as exc:
+        raise HTTPException(500, detail=_error_detail(exc, 'diagnostics'))
+
 @app.get('/api/settings')
 def api_get_settings(user=Depends(require_user)): return db.get_settings()
 
@@ -84,20 +107,57 @@ def api_get_document(doc_id:int,user=Depends(require_user)):
     db.audit(user['email'],user['role'],'VIEW_DOCUMENT','DOCUMENT',doc_id)
     return d
 
+def _safe_audit(email, role, action, entity_type=None, entity_id=None, details=None):
+    try:
+        db.audit(email, role, action, entity_type, entity_id, details)
+    except Exception:
+        logger.exception('Audit non bloquant: %s %s %s', action, entity_type, entity_id)
+
+
+def _error_detail(exc, operation):
+    logger.exception('Erreur Facturation [%s]', operation)
+    return {
+        'operation': operation,
+        'type': type(exc).__name__,
+        'message': str(exc) or 'Erreur interne sans message'
+    }
+
+
 @app.post('/api/documents')
 async def api_create_document(request:Request,user=Depends(require_perm('create'))):
-    doc=await request.json(); doc_id=db.create_document(doc,user['email']); db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email']); db.audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type')}); return {'ok':True,'id':doc_id,'status':'DRAFT'}
+    try:
+        doc=await request.json()
+        doc_id=db.create_document(doc,user['email'])
+    except Exception as exc:
+        raise HTTPException(500, detail=_error_detail(exc, 'create_document'))
+
+    try:
+        db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email'])
+    except Exception:
+        logger.exception('Enregistrement client non bloquant pour document %s', doc_id)
+    _safe_audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type')})
+    return {'ok':True,'id':doc_id,'status':'DRAFT'}
 
 @app.put('/api/documents/{doc_id}')
 async def api_update_document(doc_id:int,request:Request,user=Depends(require_user)):
-    d=db.get_document(doc_id,user['email'],user['role'])
-    if not d: raise HTTPException(404,'Document introuvable')
-    allowed=user['role']=='SUPER_ADMIN' or user['role']=='ADMIN' or (user['role']=='OPERATOR' and d['created_by']==user['email'])
-    if not allowed: raise HTTPException(403,'Modification interdite')
-    if d['status'] in {'ARCHIVED','CANCELLED'}: raise HTTPException(409,'Document verrouillé')
-    doc=await request.json(); ok=db.update_document(doc_id,doc,user['email'])
-    if not ok: raise HTTPException(409,'Document non modifiable')
-    db.audit(user['email'],user['role'],'UPDATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num')}); return {'ok':True}
+    try:
+        d=db.get_document(doc_id,user['email'],user['role'])
+        if not d: raise HTTPException(404,'Document introuvable')
+        allowed=user['role']=='SUPER_ADMIN' or user['role']=='ADMIN' or (user['role']=='OPERATOR' and d['created_by']==user['email'])
+        if not allowed: raise HTTPException(403,'Modification interdite')
+        if d['status'] in {'ARCHIVED','CANCELLED'}: raise HTTPException(409,'Document verrouillé')
+        doc=await request.json(); ok=db.update_document(doc_id,doc,user['email'])
+        if not ok: raise HTTPException(409,'Document non modifiable')
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, detail=_error_detail(exc, 'update_document'))
+    try:
+        db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email'])
+    except Exception:
+        logger.exception('Mise à jour client non bloquante pour document %s', doc_id)
+    _safe_audit(user['email'],user['role'],'UPDATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num')})
+    return {'ok':True}
 
 @app.post('/api/documents/{doc_id}/status')
 async def api_status(doc_id:int,request:Request,user=Depends(require_user)):
