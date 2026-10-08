@@ -32,13 +32,13 @@ def normalize_user(user):
     u['is_admin']=u.get('role') in {'SUPER_ADMIN','ADMIN'}
     return u
 
-def get_current_user(request):
+def get_current_user(request: Request):
     u=normalize_user(request.session.get('user'))
     if u:
         request.session['user']=u
     return u
 
-def require_user(request):
+def require_user(request: Request):
     u=get_current_user(request)
     if not u: raise HTTPException(401,'Non authentifié')
     return u
@@ -50,7 +50,7 @@ def require_perm(permission):
     return dep
 
 @app.get('/login')
-def login(request):
+def login(request: Request):
     state=secrets.token_urlsafe(16); request.session['auth_state']=state; return RedirectResponse(auth.get_auth_url(state))
 
 @app.get('/auth/callback')
@@ -68,7 +68,7 @@ def auth_callback(request:Request,code:str=None,state:str=None,error:str=None):
     return RedirectResponse('/')
 
 @app.get('/logout')
-def logout(request):
+def logout(request: Request):
     u=get_current_user(request)
     if u: db.audit(u['email'],u['role'],'LOGOUT','USER',u['email'])
     request.session.clear(); return RedirectResponse(auth.get_logout_url())
