@@ -34,8 +34,7 @@ def auth_callback(request:Request,code:str=None,state:str=None,error:str=None):
     existing=db.get_user(email); bootstrap=auth.is_bootstrap_super_admin(email)
     u=db.upsert_user(email,name,bootstrap_super=bootstrap)
     # ADMIN_EMAILS remains an emergency bootstrap: it cannot demote an explicitly managed account.
-    role=u['role']
-    if bootstrap and not existing: role='SUPER_ADMIN'
+    role='SUPER_ADMIN' if bootstrap else u['role']
     request.session['user']={'email':email,'name':name,'role':role,'is_admin':role in {'SUPER_ADMIN','ADMIN'}}
     db.audit(email,role,'LOGIN','USER',email,{'name':name})
     return RedirectResponse('/')
@@ -47,7 +46,7 @@ def logout(request):
     request.session.clear(); return RedirectResponse(auth.get_logout_url())
 
 @app.get('/')
-def index(request):
+def index(request: Request):
     u=get_current_user(request)
     if not u:return RedirectResponse('/login')
     return templates.TemplateResponse('index.html',{'request':request,'user':u})
