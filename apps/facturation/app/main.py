@@ -12,7 +12,32 @@ db.init_db(); app=FastAPI(title='KORINTEK — Facturation')
 app.add_middleware(SessionMiddleware,secret_key=os.environ.get('SESSION_SECRET_KEY',secrets.token_hex(32)),same_site='lax',https_only=True)
 templates=Jinja2Templates(directory=os.path.join(os.path.dirname(__file__),'templates'))
 
-def get_current_user(request): return request.session.get('user')
+def normalize_user(user):
+    """Normalize sessions created by the pre-RBAC version and current RBAC sessions.
+    This is deliberately in-memory/session-only: it does not modify the database.
+    """
+    if not user:
+        return None
+    u=dict(user)
+    role=u.get('role')
+    if role not in auth.ROLES:
+        email=(u.get('email') or '').lower()
+        if email and auth.is_bootstrap_super_admin(email):
+            role='SUPER_ADMIN'
+        elif u.get('is_admin'):
+            role='ADMIN'
+        else:
+            role='OPERATOR'
+        u['role']=role
+    u['is_admin']=u.get('role') in {'SUPER_ADMIN','ADMIN'}
+    return u
+
+def get_current_user(request):
+    u=normalize_user(request.session.get('user'))
+    if u:
+        request.session['user']=u
+    return u
+
 def require_user(request):
     u=get_current_user(request)
     if not u: raise HTTPException(401,'Non authentifié')

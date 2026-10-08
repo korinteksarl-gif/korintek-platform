@@ -311,11 +311,11 @@
 <body>
 <div class="topbar no-print">
   <span class="tb-user">{{ user.name }} ({{ user.email }})</span>
-  <span class="tb-role admin">{{ user.role }}</span>
+  <span class="tb-role admin">{{ user.role or 'OPERATOR' }}</span>
   <a href="/logout" class="tb-logout">Déconnexion</a>
 </div>
 <div class="app">
-<script>window.__CURRENT_USER__ = { email: "{{ user.email }}", role: "{{ user.role }}", isAdmin: {{ 'true' if user.is_admin else 'false' }} };</script>
+<script>window.__CURRENT_USER__ = { email: "{{ user.email }}", role: "{{ user.role or 'OPERATOR' }}", isAdmin: {{ 'true' if user.is_admin else 'false' }} };</script>
 
   <!-- ============ LEFT: CONTROLS ============ -->
   <div class="panel no-print">
@@ -1514,7 +1514,7 @@ document.getElementById('reset-btn').addEventListener('click', ()=>{
 });
 
 // ---- init ----
-window.KORINTEK_USER_ROLE = {{ user.role|tojson }};
+window.KORINTEK_USER_ROLE = {{ (user.role or 'OPERATOR')|tojson }};
 
 async function init(){
   try{
