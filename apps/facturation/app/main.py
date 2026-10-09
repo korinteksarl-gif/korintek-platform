@@ -114,9 +114,26 @@ def api_users(user=Depends(require_perm('users'))): return db.list_users()
 
 @app.patch('/api/users/{email}/role')
 async def api_user_role(email:str,request:Request,user=Depends(require_perm('users'))):
-    data=await request.json(); role=data.get('role')
-    if email.lower()==user['email'].lower() and role!='SUPER_ADMIN': raise HTTPException(400,'Le Super Admin ne peut pas se retirer lui-même ce rôle.')
-    db.set_user_role(email,role); db.audit(user['email'],user['role'],'CHANGE_ROLE','USER',email,{'new_role':role}); return {'ok':True}
+    email=email.strip().lower()
+    data=await request.json()
+    role=(data.get('role') or '').strip().upper()
+    if role not in {'SUPER_ADMIN','ADMIN','OPERATOR','AUDITOR'}:
+        raise HTTPException(400,'Rôle invalide. Choisissez SUPER_ADMIN, ADMIN, OPERATOR ou AUDITOR.')
+    target=db.get_user(email)
+    if not target:
+        raise HTTPException(404,'Utilisateur introuvable dans KORINTEK Facturation.')
+    if email==user['email'].lower() and role!='SUPER_ADMIN':
+        raise HTTPException(400,'Le Super Admin ne peut pas se retirer lui-même ce rôle.')
+    if target.get('role')=='SUPER_ADMIN' and role!='SUPER_ADMIN':
+        # Prevent accidentally removing the last Super Admin.
+        if db.count_super_admins() <= 1:
+            raise HTTPException(409,'Impossible : cet utilisateur est le dernier SUPER_ADMIN. Désignez un autre SUPER_ADMIN avant de le rétrograder.')
+    if target.get('role')==role:
+        return {'ok':True,'unchanged':True,'email':email,'role':role}
+    old_role=target.get('role') or 'OPERATOR'
+    db.set_user_role(email,role)
+    db.audit(user['email'],user['role'],'CHANGE_ROLE','USER',email,{'old_role':old_role,'new_role':role})
+    return {'ok':True,'email':email,'role':role,'old_role':old_role}
 
 @app.get('/api/audit')
 def api_audit(user=Depends(require_perm('audit'))): return db.audit_list()

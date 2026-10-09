@@ -105,7 +105,13 @@ def list_users():
 
 def set_user_role(email, role):
     if role not in ROLES: raise ValueError("Rôle invalide")
-    with get_conn() as conn: conn.cursor().execute("UPDATE users SET role=%s WHERE email=%s",(role,email.lower()))
+    with get_conn() as conn:
+        cur=conn.cursor(); cur.execute("UPDATE users SET role=%s WHERE email=%s",(role,email.lower()))
+        return cur.rowcount == 1
+
+def count_super_admins():
+    with get_conn() as conn:
+        cur=conn.cursor(); cur.execute("SELECT COUNT(*) FROM users WHERE role='SUPER_ADMIN'"); return int(cur.fetchone()[0])
 
 def _row_to_doc(r):
     return {"id":r["id"],"type":r["doc_type"],"num":r["num"],"date":r["doc_date"],"client":r["client_nom"],"clientTel":r["client_tel"],"clientEmail":r["client_email"],"clientAdresse":r["client_adresse"],"items":r["items_json"] or [],"ht":r["ht"],"total":r["total"],"tvaOn":bool(r["tva_on"]),"retenuePct":r["retenue_pct"],"conditions":r["conditions"],"created_by":r["created_by"],"created_at":r["created_at"],"status":r.get("status") or "DRAFT","updated_by":r.get("updated_by"),"updated_at":r.get("updated_at"),"archived_by":r.get("archived_by"),"archived_at":r.get("archived_at"),"cancelled_reason":r.get("cancelled_reason")}

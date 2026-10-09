@@ -305,6 +305,24 @@
   .tb-role.employe{background:rgba(255,255,255,.15);color:#fff;}
   .tb-logout{margin-left:auto;color:#fff;opacity:.8;text-decoration:none;font-weight:600;}
   .tb-logout:hover{opacity:1;text-decoration:underline;}
+  .admin-card{border:1px solid #dfe7e5;border-radius:12px;padding:16px;background:#fff;margin-bottom:14px;}
+  .admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;}
+  .admin-head h3{margin:0;font-size:17px;color:var(--navy,#0f172a);}
+  .admin-note{margin:0;color:#64748b;font-size:12px;line-height:1.5;}
+  .users-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .users-table th,.users-table td{padding:10px 8px;border-bottom:1px solid #edf1f0;text-align:left;vertical-align:middle;}
+  .users-table th{background:#f7faf9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+  .role-select{min-width:145px;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}
+  .role-save{padding:7px 11px;border:0;border-radius:8px;background:#00bad2;color:#fff;font-weight:700;cursor:pointer;}
+  .role-save:disabled{opacity:.5;cursor:not-allowed;}
+  .role-state{font-size:11px;font-weight:700;margin-left:6px;}
+  .role-state.ok{color:#16803c;}
+  .role-state.err{color:#b42318;}
+  .role-badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2f7;font-size:10px;font-weight:800;}
+  .role-badge.super{background:#e0f7fb;color:#006b78;}
+  .role-badge.admin{background:#fff4d6;color:#7a5600;}
+  .role-badge.operator{background:#edf2f7;color:#475569;}
+  .role-badge.auditor{background:#eee9ff;color:#5b3ea6;}
   @media print{ .topbar{display:none !important;} }
 </style>
 </head>
@@ -332,6 +350,7 @@
       <button class="tab-btn" data-tab="history">Historique</button>
       <button class="tab-btn" data-tab="dashboard" id="tab-btn-dashboard" style="display:none;">Tableau de bord</button>
       <button class="tab-btn" data-tab="settings">Société</button>
+      <button class="tab-btn" data-tab="admin-users" id="tab-btn-admin-users" style="display:none;">Administration</button>
     </div>
 
     <!-- EDIT TAB -->
@@ -537,6 +556,30 @@
         <legend>Par employé</legend>
         <div id="dash-creator"></div>
       </fieldset>
+    </div>
+
+    <!-- ADMIN USERS TAB (SUPER_ADMIN uniquement) -->
+    <div id="tab-admin-users" style="display:none;">
+      <div class="admin-card">
+        <div class="admin-head">
+          <div>
+            <h3>Utilisateurs &amp; droits</h3>
+            <p class="admin-note">Gérez le rôle applicatif des comptes déjà authentifiés. Les changements sont appliqués côté serveur et enregistrés dans le journal d’audit.</p>
+          </div>
+          <button type="button" class="role-save" id="users-refresh">Actualiser</button>
+        </div>
+        <div id="users-feedback" class="admin-note" style="margin-bottom:10px;"></div>
+        <div style="overflow:auto;">
+          <table class="users-table">
+            <thead><tr><th>Utilisateur</th><th>E-mail</th><th>Rôle actuel</th><th>Nouveau rôle</th><th>Action</th></tr></thead>
+            <tbody id="users-table-body"><tr><td colspan="5">Chargement…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="admin-card">
+        <strong>Règle de sécurité</strong>
+        <p class="admin-note" style="margin-top:6px;">ADMIN peut créer, modifier, consulter l’historique global, exporter et auditer. ADMIN ne peut ni supprimer/archiver ni gérer les rôles. AUDITOR reste en lecture seule. Seul SUPER_ADMIN gère les droits.</p>
+      </div>
     </div>
 
     <!-- SETTINGS TAB -->
@@ -1133,17 +1176,90 @@ function updateDoctypeUI(){
   document.getElementById('lbl-facture').classList.toggle('checked', type==='facture');
 }
 
+// ---- user & role administration (SUPER_ADMIN only) ----
+const ROLE_LABELS = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ADMIN: 'ADMIN',
+  OPERATOR: 'OPERATOR',
+  AUDITOR: 'AUDITOR'
+};
+
+function esc(value){
+  return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function roleBadge(role){
+  const raw=String(role||'');
+  const cls = raw==='SUPER_ADMIN' ? 'super' : raw.toLowerCase();
+  return `<span class="role-badge ${cls}">${esc(role||'—')}</span>`;
+}
+
+async function loadUsers(){
+  if(window.__CURRENT_USER__?.role !== 'SUPER_ADMIN') return;
+  const body=document.getElementById('users-table-body');
+  const feedback=document.getElementById('users-feedback');
+  body.innerHTML='<tr><td colspan="5">Chargement…</td></tr>';
+  feedback.textContent='';
+  try{
+    const r=await fetch('/api/users');
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.detail || 'Impossible de charger les utilisateurs.');
+    if(!Array.isArray(data) || !data.length){
+      body.innerHTML='<tr><td colspan="5">Aucun utilisateur enregistré.</td></tr>'; return;
+    }
+    body.innerHTML=data.map(u=>{
+      const options=Object.keys(ROLE_LABELS).map(role=>`<option value="${role}" ${role===u.role?'selected':''}>${role}</option>`).join('');
+      return `<tr data-email="${esc(u.email)}">
+        <td><strong>${esc(u.display_name||'—')}</strong></td>
+        <td>${esc(u.email)}</td>
+        <td>${roleBadge(u.role)}</td>
+        <td><select class="role-select" data-role-select="${esc(u.email)}">${options}</select></td>
+        <td><button type="button" class="role-save" data-role-save="${esc(u.email)}">Enregistrer</button><span class="role-state" data-role-state="${esc(u.email)}"></span></td>
+      </tr>`;
+    }).join('');
+    body.querySelectorAll('[data-role-save]').forEach(btn=>{
+      btn.addEventListener('click',()=>changeUserRole(btn.dataset.roleSave, btn));
+    });
+  }catch(e){
+    body.innerHTML=`<tr><td colspan="5" style="color:var(--danger,#b42318)">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function changeUserRole(email, btn){
+  const select=document.querySelector(`[data-role-select="${CSS.escape(email)}"]`);
+  const state=document.querySelector(`[data-role-state="${CSS.escape(email)}"]`);
+  if(!select) return;
+  const role=select.value;
+  const currentRow=btn.closest('tr');
+  const currentBadge=currentRow?.querySelector('.role-badge')?.textContent?.trim();
+  if(currentBadge===role){ state.textContent='Déjà appliqué'; state.className='role-state ok'; return; }
+  if(!confirm(`Confirmer le changement de rôle de ${email} vers ${role} ?`)) return;
+  btn.disabled=true; state.textContent='Enregistrement…'; state.className='role-state';
+  try{
+    const r=await fetch(`/api/users/${encodeURIComponent(email)}/role`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({role})
+    });
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.detail || 'Le changement de rôle a échoué.');
+    state.textContent='✓ Enregistré'; state.className='role-state ok';
+    await loadUsers();
+  }catch(e){
+    state.textContent=e.message; state.className='role-state err';
+  }finally{ btn.disabled=false; }
+}
+
 // ---- tabs ----
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    ['edit','history','settings','dashboard'].forEach(t=>{
+    ['edit','history','settings','dashboard','admin-users'].forEach(t=>{
       const el = document.getElementById('tab-'+t);
       if(el) el.style.display = (t===btn.dataset.tab) ? 'block' : 'none';
     });
     if(btn.dataset.tab === 'history') renderHistoryList();
     if(btn.dataset.tab === 'dashboard') loadDashboardStats();
+    if(btn.dataset.tab === 'admin-users') loadUsers();
   });
 });
 
@@ -1547,6 +1663,12 @@ async function init(){
   renderExamLines();
   renderCustomLines();
   renderPreview();
+
+  // Gestion des rôles : visible uniquement pour SUPER_ADMIN.
+  if(window.__CURRENT_USER__?.role === 'SUPER_ADMIN') {
+    document.getElementById('tab-btn-admin-users').style.display = '';
+    document.getElementById('users-refresh').addEventListener('click', loadUsers);
+  }
 
   // restreindre l'onglet Société en lecture seule pour les employés (admin uniquement)
   if(!(['SUPER_ADMIN','ADMIN','AUDITOR'].includes(window.__CURRENT_USER__?.role))){
