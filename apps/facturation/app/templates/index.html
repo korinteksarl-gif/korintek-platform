@@ -292,21 +292,72 @@
   .action-bar{display:flex;gap:10px;max-width:210mm;margin:18px auto 0;}
   .action-bar .btn{width:auto;flex:1;}
 
+  .print-root{display:none;}
   @page{
-    size: A4;
-    margin: 0;
+    size:A4;
+    margin:0;
   }
   @media print{
-    html,body{background:#fff;margin:0;padding:0;}
-    .panel,.action-bar{display:none !important;}
-    .preview-wrap{background:#fff;padding:0;min-height:0;overflow:visible;display:block;}
-    .sheet{
-      box-shadow:none;border:none;
-      width:210mm;min-height:297mm;max-width:210mm;
-      margin:0;padding:0;
-      page-break-after:avoid;
-    }
+    html,body{background:#fff !important;margin:0 !important;padding:0 !important;}
+    .panel,.action-bar,.topbar,.preview-wrap > div > .sheet{display:none !important;}
+    .preview-wrap{background:#fff !important;padding:0 !important;min-height:0 !important;overflow:visible !important;display:block !important;}
     .app{display:block;}
+    .print-root{display:block !important;}
+    .print-page{
+      width:210mm;height:297mm;
+      page-break-after:always;break-after:page;
+      page-break-inside:avoid;break-inside:avoid;
+      display:flex;flex-direction:column;
+      position:relative;overflow:hidden;background:#fff;
+      box-sizing:border-box;
+    }
+    .print-page:last-child{page-break-after:auto;break-after:auto;}
+    .print-body{height:281mm;display:flex;flex:0 0 281mm;min-height:0;}
+    .print-sidebar{
+      width:62mm;flex:0 0 62mm;
+      background:linear-gradient(195deg,var(--cyan-dk),var(--ink) 130%);
+      color:#fff;box-sizing:border-box;
+      padding:14mm 9mm 10mm;
+      display:flex;flex-direction:column;align-items:center;
+    }
+    .print-sidebar .side-badge{margin-bottom:8mm;}
+    .print-sidebar .side-contact{margin-top:auto;}
+    .print-main{
+      width:148mm;flex:0 0 148mm;height:281mm;
+      box-sizing:border-box;padding:14mm 12mm 8mm;
+      position:relative;overflow:hidden;
+    }
+    .print-main .wm-layer{display:block !important;}
+    .print-main-content{position:relative;z-index:1;height:100%;overflow:hidden;}
+    .print-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
+    .print-table col.col-designation{width:58%;}
+    .print-table col.col-qty{width:8%;}
+    .print-table col.col-price{width:17%;}
+    .print-table col.col-total{width:17%;}
+    .print-table thead{display:table-header-group;}
+    .print-table tr{break-inside:avoid;page-break-inside:avoid;}
+    .print-table th{
+      text-align:left;font-family:'Manrope';font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+      color:var(--muted);padding:0 7px 9px;border-bottom:2px solid var(--ink);font-weight:800;
+    }
+    .print-table th:first-child,.print-table td:first-child{padding-left:0;}
+    .print-table th:last-child,.print-table td:last-child{padding-right:0;}
+    .print-table th.num,.print-table td.num{text-align:right;}
+    .print-table td{padding:10px 7px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:top;}
+    .print-table td .item-name{font-weight:750;color:var(--ink);line-height:1.25;overflow-wrap:anywhere;}
+    .print-table td .item-desc{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.35;overflow-wrap:anywhere;}
+    .print-table td.num{font-family:'JetBrains Mono';font-size:11.5px;white-space:nowrap;}
+    .print-footer{
+      height:16mm;flex:0 0 16mm;box-sizing:border-box;padding:4mm 12mm 2mm;
+      font-size:8.5px;color:var(--muted);text-align:center;line-height:1.5;
+      border-top:1px solid var(--line);background:#fff;
+    }
+    .print-footer .page-no{margin-top:1mm;font-family:'JetBrains Mono';font-size:8px;}
+    .print-continuation{
+      font-family:'Manrope';font-size:10px;font-weight:800;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.06em;margin:0 0 14px;
+    }
+    .print-last-block{margin-top:14px;}
   }
   ::placeholder{color:#b7bebe;}
   .topbar{
@@ -782,6 +833,7 @@
         <button class="btn btn-primary" id="print-btn">🖨️ Imprimer / Exporter en PDF</button>
         <button class="btn btn-ghost" id="reset-btn">Nouveau document vierge</button>
       </div>
+      <div id="print-root" class="print-root" aria-hidden="true"></div>
     </div>
   </div>
 
@@ -1672,7 +1724,170 @@ function loadDocIntoForm(doc){
 }
 
 // ---- print / reset ----
-document.getElementById('print-btn').addEventListener('click', ()=> window.print());
+function cloneForPrint(selector){
+  const el=document.querySelector(selector);
+  return el ? el.cloneNode(true) : null;
+}
+
+function makePrintSidebar(){
+  const source=document.querySelector('.sheet-sidebar');
+  const side=source.cloneNode(true);
+  side.className='print-sidebar';
+  // IDs are not needed in the print-only DOM; avoid duplicate-id side effects.
+  side.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  return side;
+}
+
+function makePrintPage(pageNo, totalHint){
+  const page=document.createElement('div');
+  page.className='print-page';
+
+  const body=document.createElement('div');
+  body.className='print-body';
+  body.appendChild(makePrintSidebar());
+
+  const main=document.createElement('div');
+  main.className='print-main';
+  const wm=cloneForPrint('#wm-layer');
+  if(wm){ wm.removeAttribute('id'); main.appendChild(wm); }
+  const content=document.createElement('div');
+  content.className='print-main-content';
+  main.appendChild(content);
+  body.appendChild(main);
+  page.appendChild(body);
+
+  const footer=document.createElement('div');
+  footer.className='print-footer';
+  footer.innerHTML=(document.getElementById('pv-company-foot')?.textContent || 'KORINTEK SARL — Lomé, Togo')+
+    `<div class="page-no">Page ${pageNo}${totalHint ? ' / '+totalHint : ''}</div>`;
+  page.appendChild(footer);
+  return {page,content};
+}
+
+function makePrintTable(rows){
+  const table=document.createElement('table');
+  table.className='print-table';
+  table.innerHTML=`<colgroup><col class="col-designation"><col class="col-qty"><col class="col-price"><col class="col-total"></colgroup>
+    <thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT (FCFA)</th><th class="num">Total HT (FCFA)</th></tr></thead>`;
+  const tbody=document.createElement('tbody');
+  rows.forEach(row=>tbody.appendChild(row.cloneNode(true)));
+  table.appendChild(tbody);
+  return table;
+}
+
+function makePrintIntro(){
+  const frag=document.createDocumentFragment();
+  const meta=cloneForPrint('.sheet-meta-top');
+  const activity=cloneForPrint('#pv-activity-chip');
+  const parties=cloneForPrint('.parties');
+  if(meta) frag.appendChild(meta);
+  if(activity) frag.appendChild(activity);
+  if(parties) frag.appendChild(parties);
+  return frag;
+}
+
+function makePrintLastBlock(){
+  const frag=document.createDocumentFragment();
+  const selectors=['.totals','#pv-conditions','#pv-rib-box','.sig-row'];
+  const wrap=document.createElement('div');
+  wrap.className='print-last-block';
+  selectors.forEach(sel=>{
+    const el=cloneForPrint(sel);
+    if(el) wrap.appendChild(el);
+  });
+  frag.appendChild(wrap);
+  return frag;
+}
+
+function buildPrintPages(){
+  const root=document.getElementById('print-root');
+  root.innerHTML='';
+
+  const sourceRows=[...document.querySelectorAll('#pv-items > tr')];
+  const pages=[];
+  let current=makePrintPage(1);
+  current.content.appendChild(makePrintIntro());
+  const continuation=document.createElement('div');
+  continuation.className='print-continuation';
+  continuation.textContent='Détail de la prestation / fourniture';
+  current.content.appendChild(continuation);
+  const table=makePrintTable([]);
+  current.content.appendChild(table);
+  const tbody=table.querySelector('tbody');
+  pages.push(current);
+
+  // Fill pages row-by-row. The fixed A4 content box makes the check deterministic.
+  sourceRows.forEach(row=>{
+    const candidate=row.cloneNode(true);
+    tbody.appendChild(candidate);
+    if(current.content.scrollHeight > current.content.clientHeight + 1){
+      tbody.removeChild(candidate);
+      current=makePrintPage(pages.length+1);
+      const cont=document.createElement('div');
+      cont.className='print-continuation';
+      cont.textContent='Suite — détail de la prestation / fourniture';
+      current.content.appendChild(cont);
+      const t=makePrintTable([]);
+      current.content.appendChild(t);
+      t.querySelector('tbody').appendChild(row.cloneNode(true));
+      pages.push(current);
+    }
+  });
+
+  // Put totals, conditions, bank details and signatures on the last page.
+  let last=pages[pages.length-1];
+  const finalBlock=makePrintLastBlock();
+  last.content.appendChild(finalBlock);
+
+  // If the closing block does not fit, move rows from the last page to a new page
+  // until it fits. A row is never split between pages.
+  while(last.content.scrollHeight > last.content.clientHeight + 1){
+    const lastTable=last.content.querySelector('.print-table');
+    const lastTbody=lastTable?.querySelector('tbody');
+    const movable=lastTbody?.lastElementChild;
+    if(!movable) break;
+    lastTbody.removeChild(movable);
+    if(last.content.querySelector('.print-continuation') && !lastTbody.children.length){
+      last.content.querySelector('.print-continuation').remove();
+    }
+    const newPage=makePrintPage(pages.length+1);
+    const cont=document.createElement('div');
+    cont.className='print-continuation';
+    cont.textContent='Suite — détail de la prestation / fourniture';
+    newPage.content.appendChild(cont);
+    const nt=makePrintTable([]);
+    newPage.content.appendChild(nt);
+    nt.querySelector('tbody').appendChild(movable);
+    pages.splice(pages.length-1,0,newPage);
+    last=pages[pages.length-1];
+  }
+
+  // If the closing block itself is larger than a page, keep it on a dedicated page.
+  if(last.content.scrollHeight > last.content.clientHeight + 1){
+    last.content.querySelector('.print-last-block')?.remove();
+    const closing=makePrintPage(pages.length+1);
+    closing.content.appendChild(makePrintLastBlock());
+    pages.push(closing);
+  }
+
+  // Re-number pages after all splits.
+  const total=pages.length;
+  pages.forEach((p,i)=>{
+    const no=p.page.querySelector('.page-no');
+    if(no) no.textContent=`Page ${i+1} / ${total}`;
+    root.appendChild(p.page);
+  });
+}
+
+document.getElementById('print-btn').addEventListener('click', ()=>{
+  buildPrintPages();
+  // Let the browser finish layout before opening the print dialog.
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+});
+window.addEventListener('afterprint', ()=>{
+  const root=document.getElementById('print-root');
+  if(root) root.innerHTML='';
+});
 document.getElementById('reset-btn').addEventListener('click', ()=>{
   state.editingId = null;
   document.getElementById('save-doc').textContent = '💾 Enregistrer dans l’historique';
