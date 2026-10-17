@@ -232,7 +232,7 @@
     background-size:150px 150px;
     background-repeat:repeat;
     background-position:center;
-    opacity:0.045;
+    opacity:0.018;
     transform:rotate(-18deg);
     transform-origin:center;
   }
@@ -246,18 +246,24 @@
   .party .l1{font-weight:700;font-size:14px;color:var(--ink);}
   .party .l2{font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin-top:2px;}
 
-  table.items{width:100%;border-collapse:collapse;margin-bottom:6px;}
+  table.items{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
+  table.items col.col-designation{width:58%;}
+  table.items col.col-qty{width:8%;}
+  table.items col.col-price{width:17%;}
+  table.items col.col-total{width:17%;}
   table.items th{
-    text-align:left;font-family:'Manrope';font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
-    color:var(--muted);padding:0 0 8px;border-bottom:2px solid var(--ink);font-weight:700;
+    text-align:left;font-family:'Manrope';font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--muted);padding:0 7px 9px;border-bottom:2px solid var(--ink);font-weight:800;
   }
+  table.items th:first-child,table.items td:first-child{padding-left:0;}
+  table.items th:last-child,table.items td:last-child{padding-right:0;}
   table.items th.num,table.items td.num{text-align:right;}
-  table.items td{padding:12px 0;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:top;}
-  table.items td .item-name{font-weight:700;color:var(--ink);}
-  table.items td .item-desc{font-size:11.5px;color:var(--muted);margin-top:2px;}
-  table.items td.num{font-family:'JetBrains Mono';white-space:nowrap;}
+  table.items td{padding:10px 7px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:top;}
+  table.items td .item-name{font-weight:750;color:var(--ink);line-height:1.25;overflow-wrap:anywhere;}
+  table.items td .item-desc{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.35;overflow-wrap:anywhere;}
+  table.items td.num{font-family:'JetBrains Mono';font-size:11.5px;white-space:nowrap;}
 
-  .totals{margin-top:14px;margin-left:auto;width:300px;}
+  .totals{margin-top:16px;margin-left:auto;width:320px;}
   .totals .trow{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;color:var(--ink-soft);}
   .totals .trow.grand{
     border-top:2px solid var(--ink);margin-top:4px;padding-top:10px;
@@ -721,11 +727,12 @@
 
               <table class="items">
                 <thead>
+                  <colgroup><col class="col-designation"><col class="col-qty"><col class="col-price"><col class="col-total"></colgroup>
                   <tr>
                     <th>Désignation</th>
                     <th class="num">Qté</th>
-                    <th class="num">P.U. (FCFA)</th>
-                    <th class="num">Total (FCFA)</th>
+                    <th class="num">P.U. HT (FCFA)</th>
+                    <th class="num">Total HT (FCFA)</th>
                   </tr>
                 </thead>
                 <tbody id="pv-items">
