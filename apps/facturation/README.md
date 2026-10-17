@@ -1,6 +1,6 @@
 # KORINTEK Facturation — Documentation consolidée
 
-**Version : V2.15 — Corporate / RBAC / A4 Letterhead / Multi-pages**
+**Version : V2.16 — Corporate / RBAC / A4 Letterhead / Multi-pages / Print fix**
 
 Application web KORINTEK destinée à la gestion des **proformas et factures**, avec authentification Microsoft Entra ID, gestion des rôles, historique, audit, paiements, export et rendu documentaire corporate.
 
@@ -19,7 +19,7 @@ KORINTEK Facturation est une application commerciale générique couvrant notamm
 
 Identité principale des documents :
 
-> **KORINTEK SARL — IT • TECHNOLOGY • SERVICES • SOLUTIONS**
+> **KORINTEK SARL — Prestations & Solutions IT — Formation • Certification**
 
 Pearson VUE / PSI / PTE n'est plus présenté comme l'identité permanente de la société ; il apparaît uniquement lorsque l'activité **Examen / Certification** est pertinente.
 
@@ -229,3 +229,8 @@ Cette logique s'applique également aux anciennes proformas et factures lors d'u
 - Identité papier : Prestations & Solutions IT ; Formation • Certification.
 - Pagination A4 et filigrane KORINTEK conservés.
 - Historique existant conservé sans migration destructive.
+
+
+## V2.16 — Correctif d’impression
+
+Correction du rendu vierge constaté dans l’aperçu d’impression Chrome. Le conteneur d’impression n’est plus positionné hors de la zone imprimable ; il reste préparé dans le document puis devient visible uniquement pendant l’impression. Le moteur conserve le rendu A4 KORINTEK, le bandeau turquoise, le filigrane, le pied de page et la pagination multi-pages.
