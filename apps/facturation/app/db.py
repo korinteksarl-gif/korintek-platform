@@ -31,7 +31,7 @@ def init_db():
             items_json JSONB, ht INTEGER, total INTEGER, tva_on BOOLEAN,
             retenue_pct INTEGER, conditions TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
             status TEXT, updated_by TEXT, updated_at TEXT, archived_by TEXT, archived_at TEXT,
-            cancelled_reason TEXT
+            cancelled_reason TEXT, activity_type TEXT
         )""")
         cur.execute("""CREATE TABLE IF NOT EXISTS users (
             email TEXT PRIMARY KEY, display_name TEXT, first_seen_at TEXT NOT NULL,
@@ -63,6 +63,7 @@ def init_db():
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_by TEXT",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_at TEXT",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS cancelled_reason TEXT",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS activity_type TEXT",
         ]: cur.execute(sql)
 
 
@@ -114,7 +115,7 @@ def count_super_admins():
         cur=conn.cursor(); cur.execute("SELECT COUNT(*) FROM users WHERE role='SUPER_ADMIN'"); return int(cur.fetchone()[0])
 
 def _row_to_doc(r):
-    return {"id":r["id"],"type":r["doc_type"],"num":r["num"],"date":r["doc_date"],"client":r["client_nom"],"clientTel":r["client_tel"],"clientEmail":r["client_email"],"clientAdresse":r["client_adresse"],"items":r["items_json"] or [],"ht":r["ht"],"total":r["total"],"tvaOn":bool(r["tva_on"]),"retenuePct":r["retenue_pct"],"conditions":r["conditions"],"created_by":r["created_by"],"created_at":r["created_at"],"status":r.get("status") or "DRAFT","updated_by":r.get("updated_by"),"updated_at":r.get("updated_at"),"archived_by":r.get("archived_by"),"archived_at":r.get("archived_at"),"cancelled_reason":r.get("cancelled_reason")}
+    return {"id":r["id"],"type":r["doc_type"],"num":r["num"],"date":r["doc_date"],"client":r["client_nom"],"clientTel":r["client_tel"],"clientEmail":r["client_email"],"clientAdresse":r["client_adresse"],"items":r["items_json"] or [],"ht":r["ht"],"total":r["total"],"tvaOn":bool(r["tva_on"]),"retenuePct":r["retenue_pct"],"conditions":r["conditions"],"created_by":r["created_by"],"created_at":r["created_at"],"status":r.get("status") or "DRAFT","updated_by":r.get("updated_by"),"updated_at":r.get("updated_at"),"archived_by":r.get("archived_by"),"archived_at":r.get("archived_at"),"cancelled_reason":r.get("cancelled_reason"),"activityType":r.get("activity_type")}
 
 def list_documents(email, role):
     with get_conn() as conn:
@@ -132,11 +133,11 @@ def get_document(doc_id,email,role):
 
 def create_document(doc,created_by):
     with get_conn() as conn:
-        cur=conn.cursor(); cur.execute("""INSERT INTO documents(doc_type,num,doc_date,client_nom,client_tel,client_email,client_adresse,items_json,ht,total,tva_on,retenue_pct,conditions,created_by,created_at,status) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DRAFT') RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),created_by,now_iso())); return cur.fetchone()[0]
+        cur=conn.cursor(); cur.execute("""INSERT INTO documents(doc_type,num,doc_date,client_nom,client_tel,client_email,client_adresse,items_json,ht,total,tva_on,retenue_pct,conditions,created_by,created_at,status,activity_type) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DRAFT',%s) RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),created_by,now_iso(),doc.get("activityType"))); return cur.fetchone()[0]
 
 def update_document(doc_id,doc,actor):
     with get_conn() as conn:
-        cur=conn.cursor(); cur.execute("""UPDATE documents SET doc_type=%s,num=%s,doc_date=%s,client_nom=%s,client_tel=%s,client_email=%s,client_adresse=%s,items_json=%s,ht=%s,total=%s,tva_on=%s,retenue_pct=%s,conditions=%s,updated_by=%s,updated_at=%s WHERE id=%s AND status NOT IN ('ARCHIVED','CANCELLED') RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),actor,now_iso(),doc_id)); return bool(cur.fetchone())
+        cur=conn.cursor(); cur.execute("""UPDATE documents SET doc_type=%s,num=%s,doc_date=%s,client_nom=%s,client_tel=%s,client_email=%s,client_adresse=%s,items_json=%s,ht=%s,total=%s,tva_on=%s,retenue_pct=%s,conditions=%s,activity_type=%s,updated_by=%s,updated_at=%s WHERE id=%s AND status NOT IN ('ARCHIVED','CANCELLED') RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),doc.get("activityType"),actor,now_iso(),doc_id)); return bool(cur.fetchone())
 
 def change_status(doc_id,status,actor,reason=None):
     allowed={"DRAFT","VALIDATED","ISSUED","SENT","PARTIALLY_PAID","PAID","CANCELLED","ARCHIVED"}
@@ -179,20 +180,28 @@ def get_documents_in_range(start,end,email,role):
         return [_row_to_doc(r) for r in cur.fetchall()]
 
 def _categorize_items(items):
-    cats={"PTE Core":0,"Formations":0,"Examens":0,"Autre":0}
+    cats={"Fourniture / Vente":0,"Prestations":0,"Installation / Intégration":0,"Maintenance / Support":0,"Formation":0,"Examens / Certification":0,"Autre":0}
     for it in items or []:
         name=(it.get('name') or '').lower(); total=(it.get('price') or 0)*(it.get('qty') or 1)
-        if 'pte core' in name or 'proforma pte' in name: cats['PTE Core']+=total
-        elif 'examen' in name or 'voucher' in name: cats['Examens']+=total
-        elif any(k in name for k in ['formation','aws','azure','cisco','ccna','comptia','isc','cissp','ceh','pmi','pmp','capm','cia','cams','frm']): cats['Formations']+=total
+        if any(k in name for k in ['examen','voucher','pearson','psi','pte']): cats['Examens / Certification']+=total
+        elif any(k in name for k in ['formation','aws','azure','cisco','ccna','comptia','isc','cissp','ceh','pmi','pmp','capm','cia','cams','frm']): cats['Formation']+=total
+        elif any(k in name for k in ['installation','configuration','intégration','integration','déploiement','deployment']): cats['Installation / Intégration']+=total
+        elif any(k in name for k in ['maintenance','support','assistance','contrat']): cats['Maintenance / Support']+=total
+        elif any(k in name for k in ['prestation','audit','conseil','consulting','service','accompagnement']): cats['Prestations']+=total
+        elif any(k in name for k in ['switch','routeur','router','firewall','fortigate','serveur','server','nas','rack','pdu','ups','onduleur','ordinateur','laptop','pc','licence','license','câblage','cablage','accessoire']): cats['Fourniture / Vente']+=total
         else: cats['Autre']+=total
     return cats
 
 def get_dashboard_stats(email,role):
-    docs=list_documents(email,role); monthly={}; by_type={'proforma':{'total':0,'count':0},'facture':{'total':0,'count':0}}; by_creator={}; cats={'PTE Core':0,'Formations':0,'Examens':0,'Autre':0}
+    docs=list_documents(email,role); monthly={}; by_type={'proforma':{'total':0,'count':0},'facture':{'total':0,'count':0}}; by_creator={}; cats={'Fourniture / Vente':0,'Prestations':0,'Installation / Intégration':0,'Maintenance / Support':0,'Formation':0,'Examens / Certification':0,'Autre':0}
     for d in docs:
         m=(d['date'] or '')[:7] or '?'; monthly.setdefault(m,{'total':0,'count':0}); monthly[m]['total']+=d['total'] or 0; monthly[m]['count']+=1
         t=d['type'] if d['type'] in by_type else 'proforma'; by_type[t]['total']+=d['total'] or 0; by_type[t]['count']+=1
         c=d['created_by']; by_creator.setdefault(c,{'total':0,'count':0}); by_creator[c]['total']+=d['total'] or 0; by_creator[c]['count']+=1
-        for k,v in _categorize_items(d['items']).items(): cats[k]+=v
+        activity_map={'FOURNITURE_VENTE':'Fourniture / Vente','PRESTATION':'Prestations','FOURNITURE_PRESTATION':'Fourniture / Vente','INSTALLATION_INTEGRATION':'Installation / Intégration','MAINTENANCE_SUPPORT':'Maintenance / Support','FORMATION':'Formation','EXAMEN_CERTIFICATION':'Examens / Certification','AUTRE':'Autre'}
+        activity=d.get('activityType')
+        if activity in activity_map:
+            cats[activity_map[activity]] += d['total'] or 0
+        else:
+            for k,v in _categorize_items(d['items']).items(): cats[k]+=v
     return {'monthly':[{'month':k,**v} for k,v in sorted(monthly.items())],'by_type':by_type,'by_creator':[{'email':k,**v} for k,v in sorted(by_creator.items(),key=lambda x:-x[1]['total'])],'by_category':cats,'total_documents':len(docs),'total_amount':sum(d['total'] or 0 for d in docs)}

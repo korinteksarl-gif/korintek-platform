@@ -177,7 +177,7 @@ async def api_create_document(request:Request,user=Depends(require_perm('create'
         db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email'])
     except Exception:
         logger.exception('Enregistrement client non bloquant pour document %s', doc_id)
-    _safe_audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type')})
+    _safe_audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type'),'activityType':doc.get('activityType')})
     return {'ok':True,'id':doc_id,'status':'DRAFT'}
 
 @app.put('/api/documents/{doc_id}')
@@ -264,9 +264,9 @@ def api_export_documents(start:str,end:str,user=Depends(require_perm('export')))
     from openpyxl.styles import Font,PatternFill
     from io import BytesIO
     docs=db.get_documents_in_range(start,end,user['email'],user['role']); wb=Workbook(); ws=wb.active; ws.title='Factures'
-    ws.append(['Type','Numéro','Date','Client','Téléphone','HT (FCFA)','TVA','Retenue (%)','Net à payer (FCFA)','Statut','Créé par'])
+    ws.append(['Type','Activité','Numéro','Date','Client','Téléphone','HT (FCFA)','TVA','Retenue (%)','Net à payer (FCFA)','Statut','Créé par'])
     for c in ws[1]: c.font=Font(bold=True,color='FFFFFF'); c.fill=PatternFill('solid',fgColor='0E2226')
-    for d in docs: ws.append([d['type'],d['num'],d['date'],d['client'],d['clientTel'],d['ht'],'Oui' if d['tvaOn'] else 'Non',d['retenuePct'],d['total'],d['status'],d['created_by']])
+    for d in docs: ws.append([d['type'],d.get('activityType') or '—',d['num'],d['date'],d['client'],d['clientTel'],d['ht'],'Oui' if d['tvaOn'] else 'Non',d['retenuePct'],d['total'],d['status'],d['created_by']])
     buf=BytesIO(); wb.save(buf); buf.seek(0); db.audit(user['email'],user['role'],'EXPORT_XLSX','DOCUMENT',None,{'start':start,'end':end,'count':len(docs)}); return StreamingResponse(buf,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="korintek_factures_{start}_a_{end}.xlsx"'})
 
 @app.get('/api/dashboard/stats')
