@@ -295,85 +295,92 @@
   .print-root{display:none;}
   @page{size:A4;margin:0;}
 
-  /* ===== KORINTEK CORPORATE PRINT DOCUMENT =====
-     Full-width A4 document inspired by the supplied PBS/VosFactures reference,
-     but adapted to KORINTEK corporate identity. The application preview remains
-     unchanged; these rules only control the print/PDF document. */
+  /* ===== KORINTEK A4 LETTERHEAD PRINT DOCUMENT ===== */
   .print-page{
     width:210mm;height:297mm;box-sizing:border-box;background:#fff;
     page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;
-    display:flex;flex-direction:column;position:relative;overflow:hidden;
-    color:#172326;font-family:'Manrope',Arial,sans-serif;
+    display:block;position:relative;overflow:hidden;color:#172326;font-family:'Manrope',Arial,sans-serif;
+    --rail:47mm;
   }
   .print-page:last-child{page-break-after:auto;break-after:auto;}
+  .print-rail{
+    position:absolute;left:0;top:0;bottom:11mm;width:var(--rail);box-sizing:border-box;
+    background:linear-gradient(180deg,#05a6a6 0%,#009a9b 58%,#087778 100%);color:#fff;
+    padding:12mm 7mm 7mm;display:flex;flex-direction:column;align-items:center;text-align:center;z-index:2;
+  }
+  .print-rail .rail-logo{width:27mm;height:27mm;object-fit:contain;margin-top:2mm;filter:brightness(0) invert(1);}
+  .print-rail .rail-company{font-size:11px;font-weight:900;margin-top:5mm;letter-spacing:.01em;}
+  .print-rail .rail-tag{font-size:6.5px;font-weight:750;letter-spacing:.055em;text-transform:uppercase;margin-top:2mm;line-height:1.45;}
+  .print-rail .rail-kind{font-size:6.5px;opacity:.78;margin-top:2mm;line-height:1.35;}
+  .print-rail .rail-bottom{margin-top:auto;width:100%;border-top:1px solid rgba(255,255,255,.28);padding-top:4mm;font-size:5.8px;line-height:1.45;opacity:.9;}
+  .print-rail .rail-page{margin-top:2mm;font-family:'JetBrains Mono',monospace;font-size:6px;opacity:.8;}
   .print-head{
-    height:31mm;flex:0 0 31mm;box-sizing:border-box;
-    padding:10mm 13mm 5mm;display:flex;align-items:flex-start;justify-content:space-between;
+    height:31mm;box-sizing:border-box;margin-left:var(--rail);width:calc(100% - var(--rail));
+    padding:9mm 11mm 5mm;display:flex;align-items:flex-start;justify-content:space-between;
     border-bottom:1px solid #d9e5e4;
   }
-  .print-brand{display:flex;align-items:center;gap:5mm;min-width:0;}
-  .print-brand img{width:20mm;height:20mm;object-fit:contain;}
-  .print-brand .company{font-size:16px;font-weight:850;color:#0f172a;letter-spacing:-.02em;}
-  .print-brand .tagline{font-size:8px;font-weight:700;color:#008f98;letter-spacing:.06em;text-transform:uppercase;margin-top:2px;}
-  .print-brand .address{font-size:7.5px;color:#667575;margin-top:4px;line-height:1.35;}
-  .print-doc{text-align:right;min-width:62mm;}
-  .print-doc .doctype{font-size:20px;font-weight:900;color:#00a7b2;letter-spacing:.02em;text-transform:uppercase;}
-  .print-doc .docmeta{font-size:8px;color:#596968;margin-top:3px;line-height:1.55;}
+  .print-brand{display:flex;align-items:center;gap:4mm;min-width:0;}
+  .print-brand img{width:15mm;height:15mm;object-fit:contain;}
+  .print-brand .company{font-size:14px;font-weight:850;color:#0f172a;letter-spacing:-.02em;}
+  .print-brand .tagline{font-size:7px;font-weight:700;color:#008f98;letter-spacing:.06em;text-transform:uppercase;margin-top:1.5px;}
+  .print-brand .address{font-size:6.5px;color:#667575;margin-top:2.5px;line-height:1.35;}
+  .print-doc{text-align:right;min-width:48mm;}
+  .print-doc .doctype{font-size:18px;font-weight:900;color:#00a0a5;letter-spacing:.02em;text-transform:uppercase;}
+  .print-doc .docmeta{font-size:7px;color:#596968;margin-top:2px;line-height:1.55;}
   .print-doc .docmeta strong{color:#172326;font-family:'JetBrains Mono',monospace;}
 
-  .print-context{padding:5mm 13mm 4mm;flex:0 0 auto;box-sizing:border-box;}
-  .print-context .activity{display:inline-block;padding:2mm 4mm;border:1px solid #9edfe3;border-radius:999px;
-    background:#effbfc;color:#008b95;font-size:7.5px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4mm;}
-  .print-parties{display:grid;grid-template-columns:1fr 1fr;gap:8mm;border-bottom:1px solid #d9e5e4;padding-bottom:4mm;}
-  .print-party .lbl{font-size:7px;color:#7a8887;text-transform:uppercase;letter-spacing:.08em;font-weight:850;margin-bottom:1.5mm;}
-  .print-party .name{font-size:10.5px;font-weight:850;color:#172326;}
-  .print-party .details{font-size:8px;color:#566564;line-height:1.45;margin-top:1mm;white-space:pre-line;}
+  .print-context{margin-left:var(--rail);width:calc(100% - var(--rail));height:30mm;padding:4mm 11mm 3mm;box-sizing:border-box;overflow:hidden;}
+  .print-context .activity{display:inline-block;padding:1.6mm 3.5mm;border:1px solid #8fd9dc;border-radius:999px;
+    background:#effbfc;color:#008b95;font-size:6.5px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3mm;}
+  .print-parties{display:grid;grid-template-columns:1fr 1fr;gap:7mm;border-bottom:1px solid #d9e5e4;padding-bottom:3.5mm;}
+  .print-party .lbl{font-size:6px;color:#7a8887;text-transform:uppercase;letter-spacing:.08em;font-weight:850;margin-bottom:1mm;}
+  .print-party .name{font-size:9px;font-weight:850;color:#172326;}
+  .print-party .details{font-size:6.8px;color:#566564;line-height:1.4;margin-top:.8mm;white-space:pre-line;}
 
-  .print-main{flex:1 1 auto;min-height:0;padding:0 13mm;box-sizing:border-box;position:relative;overflow:hidden;}
-  .print-main .wm-layer{display:block !important;opacity:.055 !important;}
+  .print-main{margin-left:var(--rail);width:calc(100% - var(--rail));height:calc(100% - 31mm - 11mm);padding:0 11mm;box-sizing:border-box;position:relative;overflow:hidden;}
+  .print-page.first-page .print-main{height:calc(100% - 31mm - 30mm - 11mm);}
+  .print-main .wm-layer{display:block !important;opacity:.065 !important;}
   .print-main-content{position:relative;z-index:1;height:100%;overflow:hidden;}
-  .print-section-title{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#008f98;margin:1mm 0 2mm;}
+  .print-section-title{font-size:6.8px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#008f98;margin:1mm 0 2mm;}
   .print-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0;}
-  .print-table col.col-no{width:5%;}
-  .print-table col.col-designation{width:43%;}
-  .print-table col.col-qty{width:7%;}
-  .print-table col.col-price{width:13%;}
-  .print-table col.col-total{width:13%;}
-  .print-table col.col-tva{width:6%;}
-  .print-table col.col-tvaamt{width:13%;}
+  .print-table col.col-no{width:6%;}
+  .print-table col.col-designation{width:54%;}
+  .print-table col.col-qty{width:8%;}
+  .print-table col.col-price{width:16%;}
+  .print-table col.col-total{width:16%;}
+  .print-table col.col-tva,.print-table col.col-tvaamt{display:none;}
   .print-table thead{display:table-header-group;}
-  .print-table th{background:#00a6df;color:#fff;border:1px solid #fff;padding:2.2mm 1.5mm;
-    font-size:7px;text-transform:uppercase;letter-spacing:.02em;font-weight:850;line-height:1.15;}
-  .print-table td{border:1px solid #9fd7e8;padding:2.1mm 1.5mm;font-size:8px;vertical-align:top;line-height:1.28;}
+  .print-table th{background:#00a6df;color:#fff;border:1px solid #fff;padding:1.8mm 1.3mm;font-size:6.5px;text-transform:uppercase;letter-spacing:.02em;font-weight:850;line-height:1.1;}
+  .print-table td{border:1px solid #9fd7e8;padding:1.7mm 1.3mm;font-size:7.1px;vertical-align:top;line-height:1.25;}
   .print-table tr{break-inside:avoid;page-break-inside:avoid;}
   .print-table td.no{text-align:center;font-weight:850;color:#334443;}
-  .print-table td.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:7.8px;white-space:nowrap;}
-  .print-table td .item-name{font-weight:850;color:#172326;line-height:1.25;overflow-wrap:anywhere;}
-  .print-table td .item-desc{font-size:7.5px;color:#536463;margin-top:1mm;line-height:1.3;overflow-wrap:anywhere;}
-  .print-table td.tva{font-weight:800;text-align:center;white-space:nowrap;}
-  .print-continuation{font-size:7.5px;font-weight:900;color:#7a8887;text-transform:uppercase;letter-spacing:.07em;margin:1mm 0 2mm;}
+  .print-table td.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:6.8px;white-space:nowrap;}
+  .print-table td .item-name{font-weight:850;color:#172326;line-height:1.22;overflow-wrap:anywhere;}
+  .print-table td .item-desc{font-size:6.7px;color:#536463;margin-top:.7mm;line-height:1.25;overflow-wrap:anywhere;}
+  .print-table td.tva{display:none;}
+  .print-continuation{font-size:6.5px;font-weight:900;color:#7a8887;text-transform:uppercase;letter-spacing:.07em;margin:1mm 0 2mm;}
 
-  .print-last-block{margin-top:4mm;}
-  .print-summary{margin-left:auto;width:90mm;border-collapse:collapse;font-family:'Manrope',Arial,sans-serif;}
-  .print-summary td{padding:1.5mm 2mm;border-bottom:1px solid #dfe8e7;font-size:8px;}
+  .print-last-block{margin-top:3mm;}
+  .print-summary{margin-left:auto;width:75mm;border-collapse:collapse;font-family:'Manrope',Arial,sans-serif;}
+  .print-summary td{padding:1.2mm 1.8mm;border-bottom:1px solid #dfe8e7;font-size:7.2px;}
   .print-summary td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
-  .print-summary .grand td{font-size:11px;font-weight:900;color:#0f172a;border-top:2px solid #0f172a;border-bottom:0;padding-top:2.5mm;}
+  .print-summary .grand td{font-size:10px;font-weight:900;color:#0f172a;border-top:2px solid #0f172a;border-bottom:0;padding-top:2mm;}
   .print-summary .grand td:last-child{color:#00a0b0;}
-  .print-closing{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:5mm;}
-  .print-note{font-size:7.5px;color:#566564;line-height:1.45;border-top:1px solid #d9e5e4;padding-top:3mm;}
+  .print-closing{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-top:4mm;}
+  .print-note{font-size:6.6px;color:#566564;line-height:1.4;border-top:1px solid #d9e5e4;padding-top:2.5mm;}
   .print-note strong{color:#172326;}
-  .print-rib{border:1px solid #cfe0df;border-radius:2mm;padding:3mm;margin-top:3mm;}
-  .print-rib .title{font-size:7px;color:#008f98;text-transform:uppercase;font-weight:900;letter-spacing:.06em;margin-bottom:2mm;}
-  .print-rib-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm;}
-  .print-rib-grid .k{font-size:6px;color:#7a8887;text-transform:uppercase;}
-  .print-rib-grid .v{font-size:7px;color:#172326;font-family:'JetBrains Mono',monospace;word-break:break-all;}
-  .print-sign{display:flex;justify-content:space-between;gap:12mm;margin-top:6mm;}
-  .print-sign .box{width:50%;text-align:center;font-size:7px;color:#687675;}
-  .print-sign .line{height:16mm;border-bottom:1px solid #667575;margin-bottom:2mm;position:relative;}
-  .print-sign img{position:absolute;bottom:1mm;left:50%;transform:translateX(-50%);max-height:13mm;max-width:40mm;object-fit:contain;}
+  .print-rib{border:1px solid #cfe0df;border-radius:1.5mm;padding:2.5mm;margin-top:2.5mm;}
+  .print-rib .title{font-size:6px;color:#008f98;text-transform:uppercase;font-weight:900;letter-spacing:.06em;margin-bottom:1.5mm;}
+  .print-rib-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5mm;}
+  .print-rib-grid .k{font-size:5.3px;color:#7a8887;text-transform:uppercase;}
+  .print-rib-grid .v{font-size:6px;color:#172326;font-family:'JetBrains Mono',monospace;word-break:break-all;}
+  .print-sign{display:flex;justify-content:space-between;gap:10mm;margin-top:4mm;}
+  .print-sign .box{width:50%;text-align:center;font-size:6.2px;color:#687675;}
+  .print-sign .line{height:12mm;border-bottom:1px solid #667575;margin-bottom:1.5mm;position:relative;}
+  .print-sign img{position:absolute;bottom:1mm;left:50%;transform:translateX(-50%);max-height:10mm;max-width:35mm;object-fit:contain;}
 
-  .print-footer{height:11mm;flex:0 0 11mm;box-sizing:border-box;padding:3mm 13mm 2mm;border-top:1px solid #d9e5e4;
-    display:flex;justify-content:space-between;align-items:flex-start;font-size:6.5px;color:#7a8887;line-height:1.3;}
+  .print-footer{position:absolute;left:0;right:0;bottom:0;height:11mm;box-sizing:border-box;padding:2.5mm 9mm 1.5mm;border-top:1px solid #cfdedc;
+    display:flex;justify-content:space-between;align-items:flex-start;font-size:5.7px;color:#6e7d7b;line-height:1.3;background:#fff;z-index:3;}
   .print-footer .page-no{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 
   @media print{
@@ -1803,7 +1810,18 @@ function makePrintContext(firstPage){
 
 function makePrintPage(pageNo, totalHint, firstPage=false){
   const page=document.createElement('div');
-  page.className='print-page';
+  page.className='print-page'+(firstPage ? ' first-page' : '');
+  const rail=document.createElement('aside');
+  rail.className='print-rail';
+  const railLogo=document.querySelector('.side-logo');
+  const railSrc=railLogo?.src || '';
+  const company=document.getElementById('pv-societe-nom')?.textContent || 'KORINTEK SARL';
+  const tag=document.getElementById('pv-side-tag')?.innerText?.split('\n')[0] || 'IT • TECHNOLOGY • SERVICES • SOLUTIONS';
+  const addr=document.getElementById('side-adresse')?.textContent || 'Lomé — Togo';
+  const tel=document.getElementById('side-tel')?.textContent || '';
+  const email=document.getElementById('side-email')?.textContent || '';
+  rail.innerHTML=`${railSrc ? `<img class="rail-logo" src="${railSrc}" alt="KORINTEK">` : ''}<div class="rail-company">${company}</div><div class="rail-tag">${tag}</div><div class="rail-kind">${firstPage ? (document.getElementById('stamp')?.textContent || 'DOCUMENT COMMERCIAL') : 'SUITE DU DOCUMENT'}</div><div class="rail-bottom">${addr}<br>${tel}${tel && email ? ' · ' : ''}${email}<div class="rail-page">Page ${pageNo}</div></div>`;
+  page.appendChild(rail);
   page.appendChild(makePrintHeader());
   if(firstPage) page.appendChild(makePrintContext(true));
 
@@ -1943,7 +1961,7 @@ function buildPrintPages(){
   }
 
   const total=pages.length;
-  pages.forEach((p,i)=>{ const no=p.page.querySelector('.page-no'); if(no) no.textContent=`Page ${i+1} / ${total}`; root.appendChild(p.page); });
+  pages.forEach((p,i)=>{ const no=p.page.querySelector('.page-no'); if(no) no.textContent=`Page ${i+1} / ${total}`; const rn=p.page.querySelector('.rail-page'); if(rn) rn.textContent=`Page ${i+1} / ${total}`; root.appendChild(p.page); });
   Object.entries(oldStyle).forEach(([k,v])=>root.style[k]=v);
 }
 

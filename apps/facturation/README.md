@@ -1,6 +1,6 @@
 # KORINTEK Facturation — Documentation consolidée
 
-**Version : V2.11 — Corporate / RBAC / Pagination & Print**
+**Version : V2.13 — Corporate / RBAC / A4 Letterhead / Multi-pages**
 
 Application web KORINTEK destinée à la gestion des **proformas et factures**, avec authentification Microsoft Entra ID, gestion des rôles, historique, audit, paiements, export et rendu documentaire corporate.
 
@@ -193,3 +193,20 @@ Les anciens statuts `NULL` peuvent être présentés comme `DRAFT` uniquement à
 ## 13. Principe directeur
 
 > **Les données historiques restent la source de vérité. Le design, la présentation et le moteur d'impression peuvent évoluer sans réécrire l'historique.**
+
+## 6. Rendu A4 multi-pages
+
+Le rendu documentaire revient au **style KORINTEK historique à bandeau turquoise vertical**, tout en conservant les améliorations de lisibilité.
+
+- Chaque page est une vraie page **A4** indépendante.
+- Une bande verticale **bleu turquoise KORINTEK** est conservée sur chaque page, volontairement sobre et largement vide.
+- Le logo, l'identité et les coordonnées restent dans cette bande ; les pages suivantes affichent uniquement les éléments essentiels afin de conserver l'effet de papier à en-tête.
+- Le **filigrane KORINTEK** est maintenu sur chaque page, avec une opacité faible pour ne pas gêner la lecture.
+- Le pied de page est présent **sur chaque page**, avec les mentions légales/coordonnées et la pagination.
+- L'en-tête du tableau est répété sur les pages suivantes.
+- Les lignes longues sont conservées ensemble autant que possible ; lorsqu'une facture/proforma dépasse une page, de nouvelles pages A4 sont ajoutées automatiquement.
+- Les **totaux, TVA, retenues, conditions, RIB et signatures sont réservés à la dernière page**.
+- Les pages intermédiaires restent volontairement aérées, avec le bandeau turquoise comme élément graphique principal.
+
+Cette logique s'applique également aux anciennes proformas et factures lors d'une réimpression : **les données historiques ne sont pas modifiées, seul le moteur de rendu évolue**.
+
