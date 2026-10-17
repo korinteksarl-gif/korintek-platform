@@ -1,110 +1,195 @@
-# KORINTEK — App de facturation (Proforma / Facture)
+# KORINTEK Facturation — Documentation consolidée
 
-Application web sécurisée par compte Microsoft 365 (Entra ID) — tenant KORINTEK.
-Chaque personne se connecte avec son compte @korintek.com. Toi (admin) vois
-l'historique complet ; les employés ne voient que leurs propres documents.
+**Version : V2.11 — Corporate / RBAC / Pagination & Print**
 
-**Hébergement : Render.com (app) + Neon.tech (base de données PostgreSQL)**
-— 100% gratuit, aucune carte bancaire requise sur l'un ou l'autre.
+Application web KORINTEK destinée à la gestion des **proformas et factures**, avec authentification Microsoft Entra ID, gestion des rôles, historique, audit, paiements, export et rendu documentaire corporate.
 
----
+## 1. Positionnement commercial
 
-## 1. Créer la base de données PostgreSQL sur Neon (2 min)
+KORINTEK Facturation est une application commerciale générique couvrant notamment :
 
-1. Va sur **neon.tech** → **Sign up** (avec ton email, pas de carte demandée)
-2. Crée un nouveau projet, ex. nommé `korintek-facturation`
-3. Une fois créé, va dans **Connection Details** (ou "Dashboard") et copie la
-   **chaîne de connexion** complète — elle ressemble à :
-   `postgresql://user:password@ep-xxxx.eu-central-1.aws.neon.tech/neondb?sslmode=require`
-4. Garde cette valeur de côté → ce sera `DATABASE_URL`
+- Fourniture / achat-vente de matériel
+- Prestations de services
+- Fourniture + prestation
+- Installation / intégration
+- Maintenance / support
+- Formation
+- Examen / certification
+- Autre
 
----
+Identité principale des documents :
 
-## 2. Créer l'App Registration Entra ID (5 min)
+> **KORINTEK SARL — IT • TECHNOLOGY • SERVICES • SOLUTIONS**
 
-1. Va sur **portal.azure.com**, connecte-toi avec ton compte admin du tenant KORINTEK
-2. Cherche **"Inscriptions d'applications"** → **Nouvelle inscription**
-3. Renseigne :
-   - Nom : `KORINTEK Facturation`
-   - Types de comptes : **Comptes dans cet annuaire organisationnel uniquement (KORINTEK)**
-   - Redirect URI (type **Web**) : `https://korintek-facturation.onrender.com/auth/callback`
-     *(ajuste le nom exact après l'étape 3 si Render te donne un nom différent)*
-4. **Inscrire**
-5. Sur la page **Vue d'ensemble**, note :
-   - **ID d'application (client)** → `AZURE_CLIENT_ID`
-   - **ID d'annuaire (locataire)** → `AZURE_TENANT_ID`
-6. **Certificats & secrets** → **Nouveau secret client** → 24 mois → **Ajouter** →
-   copie immédiatement la **valeur** (elle disparaît après) → `AZURE_CLIENT_SECRET`
+Pearson VUE / PSI / PTE n'est plus présenté comme l'identité permanente de la société ; il apparaît uniquement lorsque l'activité **Examen / Certification** est pertinente.
 
-*(Cette étape ne nécessite aucune carte bancaire — Entra ID est inclus dans vos
-licences Kiosk existantes.)*
+## 2. Documents et historique
 
----
+La stratégie est **non destructive**.
 
-## 3. Déployer l'app sur Render (5 min)
+- Les anciennes proformas et factures ne sont ni supprimées, ni renommées, ni recalculées.
+- Les numéros, dates, clients, lignes, montants, TVA, retenues et statuts historiques sont conservés.
+- `activity_type` peut rester `NULL` pour les anciens documents.
+- Les anciens documents adoptent automatiquement le nouveau rendu corporate lorsqu'ils sont réouverts et imprimés.
+- Aucun `DROP TABLE`, `TRUNCATE`, suppression massive ou reset de base n'est utilisé par l'application.
+- Les extensions de schéma nécessaires utilisent des `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
 
-1. Va sur **render.com** → **Sign up** (avec GitHub ou email, pas de carte demandée)
-2. **New** → **Web Service**
-3. Deux façons de fournir le code :
-   - **Option A (recommandée)** : pousse le dossier `korintek-app` sur un dépôt GitHub
-     (public ou privé), puis connecte ce dépôt à Render
-   - **Option B** : Render permet aussi un déploy manuel via leur CLI si tu préfères
-     ne pas utiliser GitHub — dis-le-moi si tu veux cette variante
-4. Render détecte automatiquement `requirements.txt` (Python) grâce au fichier
-   `render.yaml` inclus. Vérifie que :
-   - **Build Command** : `pip install -r requirements.txt`
-   - **Start Command** : `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - **Plan** : Free
-5. Render te donne une URL du type `https://korintek-facturation.onrender.com`
-   → si elle diffère de celle utilisée à l'étape 2.3, retourne corriger le
-   Redirect URI dans l'App Registration Entra ID pour qu'il corresponde exactement
+## 3. Rôles et sécurité RBAC
 
----
+### SUPER_ADMIN
+Accès complet : administration, utilisateurs/rôles, documents, audit, paiements, export et paramètres.
 
-## 4. Configurer les variables d'environnement sur Render
+### ADMIN
+Consultation globale, création/modification, validation, paiements, export et audit. Pas de gestion des rôles ni de suppression/archive selon les règles applicatives.
 
-Dans le service Render → **Environment** → ajoute :
+### OPERATOR
+Création/modification de ses propres documents et accès à son historique/export selon les permissions configurées.
 
-| Nom | Valeur |
+### AUDITOR
+Lecture globale, audit et export ; aucune modification.
+
+Les autorisations sont contrôlées **côté backend**. Masquer un bouton dans l'interface n'est pas considéré comme une mesure de sécurité suffisante.
+
+Les comptes présents dans `ADMIN_EMAILS` sont automatiquement traités comme `SUPER_ADMIN` à la connexion. Un SUPER_ADMIN ne peut pas se retirer lui-même ce rôle et le dernier SUPER_ADMIN ne peut pas être rétrogradé.
+
+## 4. Cycle documentaire et paiements
+
+Cycle principal :
+
+`DRAFT → VALIDATED → ISSUED → SENT → PARTIALLY_PAID → PAID`
+
+Statuts spéciaux : `CANCELLED`, `ARCHIVED`.
+
+Les documents annulés/archivés sont verrouillés selon les règles applicatives.
+
+Les paiements enregistrent notamment : montant, mode, date, référence, notes et créateur. L'enregistrement d'un paiement peut faire évoluer automatiquement le document vers `PARTIALLY_PAID` ou `PAID`.
+
+Les changements sensibles sont journalisés dans `audit_log` : connexion, consultation, création, modification, export, changement de rôle, paiement et changements de statut.
+
+## 5. Rendu Corporate des proformas / factures
+
+Le tableau commercial utilise une structure lisible :
+
+- **Désignation : 58 %**
+- **Qté : 8 %**
+- **P.U. HT : 17 %**
+- **Total HT : 17 %**
+
+Les montants sont alignés à droite, les descriptions longues sont automatiquement renvoyées à la ligne et le filigrane KORINTEK reste discret afin de privilégier la lisibilité.
+
+Le favicon et l'identité visuelle sont harmonisés entre l'application et les documents commerciaux.
+
+## 6. Pagination PDF / impression multi-pages
+
+Le moteur d'impression gère les documents contenant de nombreux articles ou des descriptions très longues.
+
+- Format A4 multi-pages automatique.
+- En-tête du tableau répété sur chaque page.
+- Identité visuelle KORINTEK conservée sur les pages.
+- Une ligne article est déplacée intégralement si elle ne tient pas sur la page courante.
+- Les descriptions longues restent associées à leur article.
+- Les pages intermédiaires indiquent la continuité du détail.
+- `Page X / Y` est recalculé après pagination.
+- Totaux, TVA, conditions, coordonnées bancaires et signatures restent regroupés sur la dernière page.
+- La préparation des pages est effectuée avant `window.print()` afin que JavaScript puisse mesurer correctement les contenus, y compris lorsque le conteneur d'impression était initialement masqué.
+
+Cette logique s'applique également aux anciennes proformas et factures lors de leur réimpression.
+
+## 7. Authentification et infrastructure
+
+Architecture de référence :
+
+- **Frontend / application :** FastAPI + HTML/JavaScript
+- **Authentification :** Microsoft Entra ID, tenant KORINTEK
+- **Base de données :** PostgreSQL / Neon
+- **Hébergement :** Render
+
+Variables principales :
+
+| Variable | Utilisation |
 |---|---|
-| `AZURE_CLIENT_ID` | (étape 2.5) |
-| `AZURE_CLIENT_SECRET` | (étape 2.6) |
-| `AZURE_TENANT_ID` | (étape 2.5) |
-| `APP_BASE_URL` | `https://korintek-facturation.onrender.com` (ton URL Render réelle) |
-| `SESSION_SECRET_KEY` | générée automatiquement par `render.yaml`, ou génère la tienne avec `openssl rand -hex 32` |
-| `ADMIN_EMAILS` | ton email @korintek.com |
-| `DATABASE_URL` | la chaîne de connexion Neon (étape 1.3) |
+| `AZURE_CLIENT_ID` | ID application Entra ID |
+| `AZURE_CLIENT_SECRET` | Secret application |
+| `AZURE_TENANT_ID` | Tenant KORINTEK |
+| `APP_BASE_URL` | URL publique de l'application |
+| `SESSION_SECRET_KEY` | Signature des sessions |
+| `ADMIN_EMAILS` | Comptes bootstrap SUPER_ADMIN |
+| `DATABASE_URL` | Connexion PostgreSQL |
 
-Sauvegarde → Render redéploie automatiquement.
+Le redirect URI Entra ID doit correspondre exactement à l'URL publique configurée.
 
----
+## 8. Déploiement
 
-## 5. Premier lancement
+### Render
 
-1. Va sur ton URL Render
-2. Tu es redirigé vers la connexion Microsoft → connecte-toi avec ton compte KORINTEK
-3. Comme ton email est dans `ADMIN_EMAILS`, tu arrives avec le badge **Administrateur**
-4. Va dans l'onglet **Société**, complète/vérifie les informations, **Enregistrer**
-5. Donne l'URL à tes employés — ils se connectent avec leur propre compte @korintek.com
-   (licence Kiosk incluse) et arrivent automatiquement avec le rôle **Employé**
+Build :
 
----
+```text
+pip install -r requirements.txt
+```
 
-## À savoir sur le plan gratuit Render
+Start :
 
-- L'app **s'endort après 15 minutes d'inactivité** et met 30-50 secondes à se
-  "réveiller" au prochain accès — normal, pas un bug. Sans impact pour un usage
-  ponctuel (générer une facture de temps en temps)
-- La base de données Neon, elle, reste **persistante en permanence** — aucune
-  perte de données liée à la mise en veille de Render
-- Si un jour le volume d'usage augmente et que la mise en veille devient gênante,
-  Render propose un plan payant (~7$/mois) qui supprime cette limite — à réévaluer
-  plus tard, pas nécessaire maintenant
+```text
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
 
-## Notes de sécurité
+### Base de données
 
-- Seuls les comptes du tenant KORINTEK peuvent se connecter (mono-tenant configuré à l'étape 2)
-- Pour révoquer l'accès à quelqu'un qui quitte l'entreprise : désactive son compte M365,
-  il ne pourra plus se reconnecter
-- Pour changer qui est admin : modifie `ADMIN_EMAILS` dans Render (Environment) → redéploiement auto
-- Le secret client Entra ID expire (24 mois max) — penser à le renouveler avant échéance
+La base doit être persistante. Ne pas exécuter de reset ou de migration destructive sur la production.
+
+Conserver le dernier déploiement fonctionnel comme possibilité de rollback applicatif.
+
+## 9. Administration des utilisateurs
+
+La rubrique **Administration → Utilisateurs & droits** est réservée au `SUPER_ADMIN`.
+
+Pour modifier le rôle d'un utilisateur :
+
+1. Se connecter en `SUPER_ADMIN`.
+2. Ouvrir **Administration**.
+3. Rechercher l'utilisateur.
+4. Sélectionner le rôle.
+5. Enregistrer et confirmer.
+6. L'utilisateur doit se reconnecter pour récupérer son nouveau rôle.
+
+L'opération est enregistrée dans l'audit.
+
+## 10. Diagnostics et robustesse
+
+Un endpoint de diagnostic réservé au `SUPER_ADMIN` permet notamment de vérifier la base réellement utilisée et le nombre de documents sans exposer `DATABASE_URL`.
+
+Les erreurs API sont affichées de manière lisible dans l'interface et les erreurs serveur sont journalisées côté hébergement.
+
+La création et la mise à jour d'un document sont considérées comme réussies dès que l'écriture principale du document est effectuée ; les opérations secondaires telles que certains éléments d'audit ou d'enregistrement client ne doivent pas empêcher inutilement la sauvegarde principale.
+
+Les anciens statuts `NULL` peuvent être présentés comme `DRAFT` uniquement à l'affichage sans réécriture automatique de l'historique.
+
+## 11. Règles de maintenance
+
+- Ne pas modifier ou supprimer manuellement les données historiques pour appliquer le nouveau design.
+- Les évolutions de présentation doivent rester séparées des données métier.
+- Toute évolution de schéma doit privilégier une migration additive et non destructive.
+- Tester les documents courts **et** les documents multi-pages avant déploiement.
+- Tester en particulier les descriptions longues, les montants élevés, la TVA, les paiements et les anciennes factures/proformas.
+- Conserver une version applicative précédente pour rollback.
+
+## 12. Historique des évolutions intégrées
+
+| Version | Évolution principale |
+|---|---|
+| V2 | RBAC, cycle documentaire, audit et paiements |
+| V2.1 | Sécurité des rôles et protection de l'historique |
+| V2.2 | Corrections FastAPI / Request et sécurité de connexion |
+| V2.3 | Gestion des erreurs, diagnostics et compatibilité legacy |
+| V2.5 | Correctif typage `Request` sur les fonctions d'authentification |
+| V2.6 | Administration des utilisateurs et des rôles |
+| V2.7 | Passage à l'identité commerciale Corporate KORINTEK |
+| V2.8 | Amélioration de la lisibilité du tableau et des totaux |
+| V2.9 | Favicon et identité visuelle de l'application |
+| V2.10 | Pagination PDF multi-pages |
+| V2.11 | Correction du moteur d'impression/pagination avant `window.print()` |
+
+## 13. Principe directeur
+
+> **Les données historiques restent la source de vérité. Le design, la présentation et le moteur d'impression peuvent évoluer sans réécrire l'historique.**
