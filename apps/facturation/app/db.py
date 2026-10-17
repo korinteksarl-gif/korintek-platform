@@ -193,7 +193,7 @@ def _categorize_items(items):
     return cats
 
 def get_dashboard_stats(email,role):
-    docs=list_documents(email,role); monthly={}; by_type={'proforma':{'total':0,'count':0},'facture':{'total':0,'count':0}}; by_creator={}; cats={'Fourniture / Vente':0,'Prestations':0,'Installation / Intégration':0,'Maintenance / Support':0,'Formation':0,'Examens / Certification':0,'Autre':0}
+    docs=list_documents(email,role); monthly={}; by_type={'devis':{'total':0,'count':0},'proforma':{'total':0,'count':0},'facture':{'total':0,'count':0}}; by_creator={}; cats={'Fourniture / Vente':0,'Prestations':0,'Installation / Intégration':0,'Maintenance / Support':0,'Formation':0,'Examens / Certification':0,'Autre':0}
     for d in docs:
         m=(d['date'] or '')[:7] or '?'; monthly.setdefault(m,{'total':0,'count':0}); monthly[m]['total']+=d['total'] or 0; monthly[m]['count']+=1
         t=d['type'] if d['type'] in by_type else 'proforma'; by_type[t]['total']+=d['total'] or 0; by_type[t]['count']+=1

@@ -1,6 +1,6 @@
 # KORINTEK Facturation — Documentation consolidée
 
-**Version : V2.13 — Corporate / RBAC / A4 Letterhead / Multi-pages**
+**Version : V2.15 — Corporate / RBAC / A4 Letterhead / Multi-pages**
 
 Application web KORINTEK destinée à la gestion des **proformas et factures**, avec authentification Microsoft Entra ID, gestion des rôles, historique, audit, paiements, export et rendu documentaire corporate.
 
@@ -210,3 +210,22 @@ Le rendu documentaire revient au **style KORINTEK historique à bandeau turquois
 
 Cette logique s'applique également aux anciennes proformas et factures lors d'une réimpression : **les données historiques ne sont pas modifiées, seul le moteur de rendu évolue**.
 
+## V2.15 — Impression KORINTEK Corporate A4
+
+- Retour au rendu historique KORINTEK : bandeau vertical turquoise à gauche, logo, badge PROFORMA/FACTURE et espace visuel volontairement sobre.
+- Suppression du rendu de type tableau administratif qui imitait le modèle PBS.
+- Le PDF reprend désormais le même langage visuel que l’aperçu KORINTEK dans l’application.
+- Chaque page est une vraie feuille A4 avec le bandeau turquoise, le filigrane et le pied de page.
+- Pagination automatique pour les documents comportant de nombreux articles.
+- Les en-têtes et lignes restent lisibles ; une ligne article n’est pas volontairement coupée entre deux pages.
+- Les totaux, conditions, coordonnées bancaires et signatures sont réservés à la dernière page.
+- Filigrane KORINTEK conservé sur toutes les pages.
+- Historique et données métier inchangés.
+
+
+## V2.15 — Types de documents et identité corporate
+- Types distincts : DEVIS, PROFORMA, FACTURE.
+- Numérotation distincte DEV / PRO / FAC.
+- Identité papier : Prestations & Solutions IT ; Formation • Certification.
+- Pagination A4 et filigrane KORINTEK conservés.
+- Historique existant conservé sans migration destructive.
