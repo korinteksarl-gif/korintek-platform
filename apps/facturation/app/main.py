@@ -1,6 +1,7 @@
 import os, secrets, logging
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from . import auth, db
@@ -11,6 +12,7 @@ logger=logging.getLogger('korintek.facturation')
 db.init_db(); app=FastAPI(title='KORINTEK — Facturation')
 app.add_middleware(SessionMiddleware,secret_key=os.environ.get('SESSION_SECRET_KEY',secrets.token_hex(32)),same_site='lax',https_only=True)
 templates=Jinja2Templates(directory=os.path.join(os.path.dirname(__file__),'templates'))
+app.mount('/static', StaticFiles(directory=os.path.join(os.path.dirname(__file__),'static')), name='static')
 
 def normalize_user(user):
     """Normalize sessions created by the pre-RBAC version and current RBAC sessions.
