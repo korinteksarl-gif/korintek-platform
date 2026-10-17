@@ -293,69 +293,88 @@
   .action-bar .btn{width:auto;flex:1;}
 
   .print-root{display:none;}
-  @page{
-    size:A4;
-    margin:0;
-  }
+  @page{size:A4;margin:0;}
 
-  /* ===== PRINT DOCUMENT LAYOUT =====
-     Kept outside @media print so JS can measure the A4 pages before opening
-     the browser print dialog. The root remains hidden until print. */
+  /* ===== KORINTEK CORPORATE PRINT DOCUMENT =====
+     Full-width A4 document inspired by the supplied PBS/VosFactures reference,
+     but adapted to KORINTEK corporate identity. The application preview remains
+     unchanged; these rules only control the print/PDF document. */
   .print-page{
-    width:210mm;height:297mm;
-    page-break-after:always;break-after:page;
-    page-break-inside:avoid;break-inside:avoid;
-    display:flex;flex-direction:column;
-    position:relative;overflow:hidden;background:#fff;
-    box-sizing:border-box;
+    width:210mm;height:297mm;box-sizing:border-box;background:#fff;
+    page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;
+    display:flex;flex-direction:column;position:relative;overflow:hidden;
+    color:#172326;font-family:'Manrope',Arial,sans-serif;
   }
   .print-page:last-child{page-break-after:auto;break-after:auto;}
-  .print-body{height:281mm;display:flex;flex:0 0 281mm;min-height:0;}
-  .print-sidebar{
-    width:62mm;flex:0 0 62mm;
-    background:linear-gradient(195deg,var(--cyan-dk),var(--ink) 130%);
-    color:#fff;box-sizing:border-box;
-    padding:14mm 9mm 10mm;
-    display:flex;flex-direction:column;align-items:center;
+  .print-head{
+    height:31mm;flex:0 0 31mm;box-sizing:border-box;
+    padding:10mm 13mm 5mm;display:flex;align-items:flex-start;justify-content:space-between;
+    border-bottom:1px solid #d9e5e4;
   }
-  .print-sidebar .side-badge{margin-bottom:8mm;}
-  .print-sidebar .side-contact{margin-top:auto;}
-  .print-main{
-    width:148mm;flex:0 0 148mm;height:281mm;
-    box-sizing:border-box;padding:14mm 12mm 8mm;
-    position:relative;overflow:hidden;
-  }
-  .print-main .wm-layer{display:block !important;}
+  .print-brand{display:flex;align-items:center;gap:5mm;min-width:0;}
+  .print-brand img{width:20mm;height:20mm;object-fit:contain;}
+  .print-brand .company{font-size:16px;font-weight:850;color:#0f172a;letter-spacing:-.02em;}
+  .print-brand .tagline{font-size:8px;font-weight:700;color:#008f98;letter-spacing:.06em;text-transform:uppercase;margin-top:2px;}
+  .print-brand .address{font-size:7.5px;color:#667575;margin-top:4px;line-height:1.35;}
+  .print-doc{text-align:right;min-width:62mm;}
+  .print-doc .doctype{font-size:20px;font-weight:900;color:#00a7b2;letter-spacing:.02em;text-transform:uppercase;}
+  .print-doc .docmeta{font-size:8px;color:#596968;margin-top:3px;line-height:1.55;}
+  .print-doc .docmeta strong{color:#172326;font-family:'JetBrains Mono',monospace;}
+
+  .print-context{padding:5mm 13mm 4mm;flex:0 0 auto;box-sizing:border-box;}
+  .print-context .activity{display:inline-block;padding:2mm 4mm;border:1px solid #9edfe3;border-radius:999px;
+    background:#effbfc;color:#008b95;font-size:7.5px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4mm;}
+  .print-parties{display:grid;grid-template-columns:1fr 1fr;gap:8mm;border-bottom:1px solid #d9e5e4;padding-bottom:4mm;}
+  .print-party .lbl{font-size:7px;color:#7a8887;text-transform:uppercase;letter-spacing:.08em;font-weight:850;margin-bottom:1.5mm;}
+  .print-party .name{font-size:10.5px;font-weight:850;color:#172326;}
+  .print-party .details{font-size:8px;color:#566564;line-height:1.45;margin-top:1mm;white-space:pre-line;}
+
+  .print-main{flex:1 1 auto;min-height:0;padding:0 13mm;box-sizing:border-box;position:relative;overflow:hidden;}
+  .print-main .wm-layer{display:block !important;opacity:.055 !important;}
   .print-main-content{position:relative;z-index:1;height:100%;overflow:hidden;}
-  .print-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
-  .print-table col.col-designation{width:58%;}
-  .print-table col.col-qty{width:8%;}
-  .print-table col.col-price{width:17%;}
-  .print-table col.col-total{width:17%;}
+  .print-section-title{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#008f98;margin:1mm 0 2mm;}
+  .print-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0;}
+  .print-table col.col-no{width:5%;}
+  .print-table col.col-designation{width:43%;}
+  .print-table col.col-qty{width:7%;}
+  .print-table col.col-price{width:13%;}
+  .print-table col.col-total{width:13%;}
+  .print-table col.col-tva{width:6%;}
+  .print-table col.col-tvaamt{width:13%;}
   .print-table thead{display:table-header-group;}
+  .print-table th{background:#00a6df;color:#fff;border:1px solid #fff;padding:2.2mm 1.5mm;
+    font-size:7px;text-transform:uppercase;letter-spacing:.02em;font-weight:850;line-height:1.15;}
+  .print-table td{border:1px solid #9fd7e8;padding:2.1mm 1.5mm;font-size:8px;vertical-align:top;line-height:1.28;}
   .print-table tr{break-inside:avoid;page-break-inside:avoid;}
-  .print-table th{
-    text-align:left;font-family:'Manrope';font-size:10px;text-transform:uppercase;letter-spacing:.04em;
-    color:var(--muted);padding:0 7px 9px;border-bottom:2px solid var(--ink);font-weight:800;
-  }
-  .print-table th:first-child,.print-table td:first-child{padding-left:0;}
-  .print-table th:last-child,.print-table td:last-child{padding-right:0;}
-  .print-table th.num,.print-table td.num{text-align:right;}
-  .print-table td{padding:10px 7px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:top;}
-  .print-table td .item-name{font-weight:750;color:var(--ink);line-height:1.25;overflow-wrap:anywhere;}
-  .print-table td .item-desc{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.35;overflow-wrap:anywhere;}
-  .print-table td.num{font-family:'JetBrains Mono';font-size:11.5px;white-space:nowrap;}
-  .print-footer{
-    height:16mm;flex:0 0 16mm;box-sizing:border-box;padding:4mm 12mm 2mm;
-    font-size:8.5px;color:var(--muted);text-align:center;line-height:1.5;
-    border-top:1px solid var(--line);background:#fff;
-  }
-  .print-footer .page-no{margin-top:1mm;font-family:'JetBrains Mono';font-size:8px;}
-  .print-continuation{
-    font-family:'Manrope';font-size:10px;font-weight:800;color:var(--muted);
-    text-transform:uppercase;letter-spacing:.06em;margin:0 0 14px;
-  }
-  .print-last-block{margin-top:14px;}
+  .print-table td.no{text-align:center;font-weight:850;color:#334443;}
+  .print-table td.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:7.8px;white-space:nowrap;}
+  .print-table td .item-name{font-weight:850;color:#172326;line-height:1.25;overflow-wrap:anywhere;}
+  .print-table td .item-desc{font-size:7.5px;color:#536463;margin-top:1mm;line-height:1.3;overflow-wrap:anywhere;}
+  .print-table td.tva{font-weight:800;text-align:center;white-space:nowrap;}
+  .print-continuation{font-size:7.5px;font-weight:900;color:#7a8887;text-transform:uppercase;letter-spacing:.07em;margin:1mm 0 2mm;}
+
+  .print-last-block{margin-top:4mm;}
+  .print-summary{margin-left:auto;width:90mm;border-collapse:collapse;font-family:'Manrope',Arial,sans-serif;}
+  .print-summary td{padding:1.5mm 2mm;border-bottom:1px solid #dfe8e7;font-size:8px;}
+  .print-summary td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+  .print-summary .grand td{font-size:11px;font-weight:900;color:#0f172a;border-top:2px solid #0f172a;border-bottom:0;padding-top:2.5mm;}
+  .print-summary .grand td:last-child{color:#00a0b0;}
+  .print-closing{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:5mm;}
+  .print-note{font-size:7.5px;color:#566564;line-height:1.45;border-top:1px solid #d9e5e4;padding-top:3mm;}
+  .print-note strong{color:#172326;}
+  .print-rib{border:1px solid #cfe0df;border-radius:2mm;padding:3mm;margin-top:3mm;}
+  .print-rib .title{font-size:7px;color:#008f98;text-transform:uppercase;font-weight:900;letter-spacing:.06em;margin-bottom:2mm;}
+  .print-rib-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm;}
+  .print-rib-grid .k{font-size:6px;color:#7a8887;text-transform:uppercase;}
+  .print-rib-grid .v{font-size:7px;color:#172326;font-family:'JetBrains Mono',monospace;word-break:break-all;}
+  .print-sign{display:flex;justify-content:space-between;gap:12mm;margin-top:6mm;}
+  .print-sign .box{width:50%;text-align:center;font-size:7px;color:#687675;}
+  .print-sign .line{height:16mm;border-bottom:1px solid #667575;margin-bottom:2mm;position:relative;}
+  .print-sign img{position:absolute;bottom:1mm;left:50%;transform:translateX(-50%);max-height:13mm;max-width:40mm;object-fit:contain;}
+
+  .print-footer{height:11mm;flex:0 0 11mm;box-sizing:border-box;padding:3mm 13mm 2mm;border-top:1px solid #d9e5e4;
+    display:flex;justify-content:space-between;align-items:flex-start;font-size:6.5px;color:#7a8887;line-height:1.3;}
+  .print-footer .page-no{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 
   @media print{
     html,body{background:#fff !important;margin:0 !important;padding:0 !important;}
@@ -1444,8 +1463,8 @@ function renderPreview(){
   if(rows.length === 0){
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#b7bebe;padding:24px 0;">Aucun article sélectionné</td></tr>';
   } else {
-    tbody.innerHTML = rows.map(r => `
-      <tr>
+    tbody.innerHTML = rows.map((r, idx) => `
+      <tr data-row-index="${idx}" data-qty="${r.qty}" data-price="${r.price}" data-total="${r.total}" data-tva-exempt="${r.tvaExempt ? '1' : '0'}">
         <td><div class="item-name">${r.name}${r.tvaExempt ? ' <span style="font-size:9px;color:var(--muted);font-weight:400;">(hors TVA)</span>' : ''}</div>${r.desc ? `<div class="item-desc">${r.desc}</div>` : ''}</td>
         <td class="num">${r.qty}</td>
         <td class="num">${r.price.toLocaleString('fr-FR')}</td>
@@ -1734,22 +1753,59 @@ function cloneForPrint(selector){
   return el ? el.cloneNode(true) : null;
 }
 
-function makePrintSidebar(){
-  const source=document.querySelector('.sheet-sidebar');
-  const side=source.cloneNode(true);
-  side.className='print-sidebar';
-  // IDs are not needed in the print-only DOM; avoid duplicate-id side effects.
-  side.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-  return side;
+function makePrintHeader(){
+  const head=document.createElement('div');
+  head.className='print-head';
+  const logo=document.querySelector('.side-logo')?.cloneNode(true);
+  const company=document.getElementById('pv-societe-nom')?.textContent || 'KORINTEK SARL';
+  const tagline=document.getElementById('pv-side-tag')?.innerText?.split('\n')[0] || 'IT • TECHNOLOGY • SERVICES • SOLUTIONS';
+  const address=document.getElementById('side-adresse')?.textContent || 'Lomé — Togo';
+  const tel=document.getElementById('side-tel')?.textContent || '';
+  const email=document.getElementById('side-email')?.textContent || '';
+  const site=document.getElementById('side-site')?.textContent || '';
+  const stamp=document.getElementById('stamp')?.textContent || 'PROFORMA';
+  const num=document.getElementById('pv-num')?.textContent || '—';
+  const date=document.getElementById('pv-date')?.textContent || '—';
+  head.innerHTML=`
+    <div class="print-brand">
+      ${logo ? '<img alt="KORINTEK">' : ''}
+      <div>
+        <div class="company">${company}</div>
+        <div class="tagline">${tagline}</div>
+        <div class="address">${address}${tel ? ' · '+tel : ''}${email ? ' · '+email : ''}${site ? ' · '+site : ''}</div>
+      </div>
+    </div>
+    <div class="print-doc">
+      <div class="doctype">${stamp}</div>
+      <div class="docmeta">Numéro : <strong>${num}</strong><br>Date : <strong>${date}</strong></div>
+    </div>`;
+  if(logo) head.querySelector('.print-brand img').src=logo.src;
+  return head;
 }
 
-function makePrintPage(pageNo, totalHint){
+function makePrintContext(firstPage){
+  const frag=document.createDocumentFragment();
+  const wrap=document.createElement('div');
+  wrap.className='print-context';
+  const activity=document.getElementById('pv-activity-chip')?.textContent || 'ACTIVITÉ COMMERCIALE';
+  const client=document.getElementById('pv-c-nom')?.textContent || 'Client sans nom';
+  const details=document.getElementById('pv-c-details')?.textContent || '';
+  wrap.innerHTML=`
+    <div class="activity">${activity}</div>
+    <div class="print-parties">
+      <div class="print-party"><div class="lbl">Vendeur</div><div class="name">KORINTEK SARL</div><div class="details">IT • TECHNOLOGY • SERVICES • SOLUTIONS<br>Lomé — Togo</div></div>
+      <div class="print-party"><div class="lbl">Acheteur / Destinataire</div><div class="name">${client}</div><div class="details">${details}</div></div>
+    </div>`;
+  if(!firstPage) wrap.querySelector('.activity').textContent='Suite — '+activity;
+  frag.appendChild(wrap);
+  return frag;
+}
+
+function makePrintPage(pageNo, totalHint, firstPage=false){
   const page=document.createElement('div');
   page.className='print-page';
-
-  const body=document.createElement('div');
-  body.className='print-body';
-  body.appendChild(makePrintSidebar());
+  page.appendChild(makePrintHeader());
+  if(firstPage) page.appendChild(makePrintContext(true));
 
   const main=document.createElement('div');
   main.className='print-main';
@@ -1758,48 +1814,92 @@ function makePrintPage(pageNo, totalHint){
   const content=document.createElement('div');
   content.className='print-main-content';
   main.appendChild(content);
-  body.appendChild(main);
-  page.appendChild(body);
+  page.appendChild(main);
 
   const footer=document.createElement('div');
   footer.className='print-footer';
-  footer.innerHTML=(document.getElementById('pv-company-foot')?.textContent || 'KORINTEK SARL — Lomé, Togo')+
-    `<div class="page-no">Page ${pageNo}${totalHint ? ' / '+totalHint : ''}</div>`;
+  const companyFoot=document.getElementById('pv-company-foot')?.textContent || 'KORINTEK SARL — Lomé, Togo';
+  footer.innerHTML=`<span>${companyFoot}</span><span class="page-no">Page ${pageNo}${totalHint ? ' / '+totalHint : ''}</span>`;
   page.appendChild(footer);
   return {page,content};
 }
 
 function makePrintTable(rows){
+  const tvaOn=document.getElementById('tva-toggle')?.checked;
   const table=document.createElement('table');
   table.className='print-table';
-  table.innerHTML=`<colgroup><col class="col-designation"><col class="col-qty"><col class="col-price"><col class="col-total"></colgroup>
-    <thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT (FCFA)</th><th class="num">Total HT (FCFA)</th></tr></thead>`;
+  table.innerHTML=`<colgroup>
+    <col class="col-no"><col class="col-designation"><col class="col-qty"><col class="col-price">
+    <col class="col-total"><col class="col-tva"><col class="col-tvaamt">
+  </colgroup>
+  <thead><tr><th>N°</th><th>Désignation</th><th>Qté</th><th>PU HT</th><th>Total HT</th><th>TVA</th><th>Montant TVA</th></tr></thead>`;
   const tbody=document.createElement('tbody');
-  rows.forEach(row=>tbody.appendChild(row.cloneNode(true)));
+  rows.forEach((row,idx)=>{
+    const tr=row.cloneNode(true);
+    const qty=Number(tr.dataset.qty||0);
+    const price=Number(tr.dataset.price||0);
+    const total=Number(tr.dataset.total||0);
+    const exempt=tr.dataset.tvaExempt==='1';
+    const tva=(tvaOn && !exempt) ? Math.round(total*0.18) : 0;
+    const cells=tr.children;
+    const designation=cells[0]?.innerHTML || '';
+    tr.innerHTML=`
+      <td class="no">${Number(tr.dataset.rowIndex||idx)+1}</td>
+      <td>${designation}</td>
+      <td class="num">${qty}</td>
+      <td class="num">${price.toLocaleString('fr-FR')}</td>
+      <td class="num">${total.toLocaleString('fr-FR')}</td>
+      <td class="tva">${tvaOn && !exempt ? '18%' : '—'}</td>
+      <td class="num">${tva ? tva.toLocaleString('fr-FR') : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
   table.appendChild(tbody);
   return table;
 }
 
-function makePrintIntro(){
-  const frag=document.createDocumentFragment();
-  const meta=cloneForPrint('.sheet-meta-top');
-  const activity=cloneForPrint('#pv-activity-chip');
-  const parties=cloneForPrint('.parties');
-  if(meta) frag.appendChild(meta);
-  if(activity) frag.appendChild(activity);
-  if(parties) frag.appendChild(parties);
-  return frag;
-}
-
 function makePrintLastBlock(){
   const frag=document.createDocumentFragment();
-  const selectors=['.totals','#pv-conditions','#pv-rib-box','.sig-row'];
+  const ht=document.getElementById('pv-ht')?.textContent || '0 FCFA';
+  const tva=document.getElementById('pv-tva')?.textContent || '0 FCFA';
+  const ttc=document.getElementById('pv-ttc')?.textContent || '0 FCFA';
+  const retenue=document.getElementById('pv-retenue')?.textContent || '';
+  const net=document.getElementById('pv-total')?.textContent || '0 FCFA';
+  const tvaVisible=document.getElementById('row-tva')?.style.display !== 'none';
+  const ttcVisible=document.getElementById('row-ttc')?.style.display !== 'none';
+  const retVisible=document.getElementById('row-retenue')?.style.display !== 'none';
+  const conditions=document.getElementById('pv-conditions')?.textContent || '';
+  const rib=document.getElementById('pv-rib-grid')?.cloneNode(true);
+  const sig=document.querySelector('.sig-row');
+
   const wrap=document.createElement('div');
   wrap.className='print-last-block';
-  selectors.forEach(sel=>{
-    const el=cloneForPrint(sel);
-    if(el) wrap.appendChild(el);
-  });
+  wrap.innerHTML=`<table class="print-summary">
+    <tr><td>Total HT</td><td>${ht}</td></tr>
+    ${tvaVisible ? `<tr><td>Montant TVA</td><td>${tva}</td></tr>` : ''}
+    ${ttcVisible ? `<tr><td>Total TTC</td><td>${ttc}</td></tr>` : ''}
+    ${retVisible ? `<tr><td>Retenue à la source</td><td>${retenue}</td></tr>` : ''}
+    <tr class="grand"><td>À PAYER</td><td>${net}</td></tr>
+  </table>
+  <div class="print-closing">
+    <div class="print-note"><strong>Conditions & règlement</strong><br>${conditions}</div>
+    <div class="print-note"><strong>Coordonnées bancaires</strong><div class="print-rib"></div></div>
+  </div>
+  <div class="print-sign">
+    <div class="box"><div class="line" id="print-sign-k"></div><div>Cachet & signature KORINTEK</div></div>
+    <div class="box"><div class="line"></div><div>Signature client — Bon pour accord</div></div>
+  </div>`;
+  if(rib) {
+    const target=wrap.querySelector('.print-rib');
+    const grid=document.createElement('div'); grid.className='print-rib-grid';
+    [...rib.children].forEach(c=>{
+      const cell=document.createElement('div');
+      cell.innerHTML=`<div class="k">${c.querySelector('.k')?.textContent||''}</div><div class="v">${c.querySelector('.v')?.textContent||''}</div>`;
+      grid.appendChild(cell);
+    });
+    target.appendChild(grid);
+  }
+  const oldSig=document.getElementById('sig-korintek-line')?.querySelector('img');
+  if(oldSig){ const img=oldSig.cloneNode(true); wrap.querySelector('#print-sign-k').appendChild(img); }
   frag.appendChild(wrap);
   return frag;
 }
@@ -1807,114 +1907,48 @@ function makePrintLastBlock(){
 function buildPrintPages(){
   const root=document.getElementById('print-root');
   root.innerHTML='';
+  const oldStyle={display:root.style.display,position:root.style.position,left:root.style.left,top:root.style.top,width:root.style.width,visibility:root.style.visibility};
+  root.style.display='block'; root.style.position='absolute'; root.style.left='-100000px'; root.style.top='0'; root.style.width='210mm'; root.style.visibility='hidden';
 
-  // The print CSS is also available outside @media print, but the root is
-  // normally hidden. Temporarily render it off-screen so clientHeight and
-  // scrollHeight are real A4 measurements before window.print().
-  const oldStyle = {
-    display: root.style.display, position: root.style.position,
-    left: root.style.left, top: root.style.top, width: root.style.width,
-    visibility: root.style.visibility
-  };
-  root.style.display='block';
-  root.style.position='absolute';
-  root.style.left='-100000px';
-  root.style.top='0';
-  root.style.width='210mm';
-  root.style.visibility='hidden';
-
-  const sourceRows=[...document.querySelectorAll('#pv-items > tr')];
+  const sourceRows=[...document.querySelectorAll('#pv-items > tr[data-total]')];
   const pages=[];
-  let current=makePrintPage(1);
-  current.content.appendChild(makePrintIntro());
-  const continuation=document.createElement('div');
-  continuation.className='print-continuation';
-  continuation.textContent='Détail de la prestation / fourniture';
-  current.content.appendChild(continuation);
-  const table=makePrintTable([]);
-  current.content.appendChild(table);
-  const tbody=table.querySelector('tbody');
+  let current=makePrintPage(1,null,true);
+  const title=document.createElement('div'); title.className='print-section-title'; title.textContent='Détail de la prestation / fourniture';
+  current.content.appendChild(title);
+  let table=makePrintTable([]); current.content.appendChild(table); let tbody=table.querySelector('tbody');
   pages.push(current);
-
-  // Force layout before measuring.
   void current.content.offsetHeight;
 
   sourceRows.forEach(row=>{
-    const candidate=row.cloneNode(true);
-    tbody.appendChild(candidate);
-    void current.content.offsetHeight;
+    const candidate=row.cloneNode(true); tbody.appendChild(candidate); void current.content.offsetHeight;
     if(current.content.scrollHeight > current.content.clientHeight + 1){
       tbody.removeChild(candidate);
-      current=makePrintPage(pages.length+1);
-      const cont=document.createElement('div');
-      cont.className='print-continuation';
-      cont.textContent='Suite — détail de la prestation / fourniture';
-      current.content.appendChild(cont);
-      const t=makePrintTable([]);
-      current.content.appendChild(t);
-      t.querySelector('tbody').appendChild(row.cloneNode(true));
-      void current.content.offsetHeight;
-      pages.push(current);
+      current=makePrintPage(pages.length+1,null,false);
+      const cont=document.createElement('div'); cont.className='print-continuation'; cont.textContent='Suite — détail de la prestation / fourniture'; current.content.appendChild(cont);
+      table=makePrintTable([]); current.content.appendChild(table); tbody=table.querySelector('tbody'); tbody.appendChild(row.cloneNode(true));
+      void current.content.offsetHeight; pages.push(current);
     }
   });
 
-  // Put totals, conditions, bank details and signatures on the last page.
   let last=pages[pages.length-1];
-  const finalBlock=makePrintLastBlock();
-  last.content.appendChild(finalBlock);
-  void last.content.offsetHeight;
-
-  // Move complete rows backwards until the closing block fits.
+  const closing=makePrintLastBlock(); last.content.appendChild(closing); void last.content.offsetHeight;
   while(last.content.scrollHeight > last.content.clientHeight + 1){
-    const lastTable=last.content.querySelector('.print-table');
-    const lastTbody=lastTable?.querySelector('tbody');
-    const movable=lastTbody?.lastElementChild;
+    const lastTable=last.content.querySelector('.print-table'); const lastTbody=lastTable?.querySelector('tbody'); const movable=lastTbody?.lastElementChild;
     if(!movable) break;
     lastTbody.removeChild(movable);
-    if(last.content.querySelector('.print-continuation') && !lastTbody.children.length){
-      last.content.querySelector('.print-continuation').remove();
-    }
-    const newPage=makePrintPage(pages.length+1);
-    const cont=document.createElement('div');
-    cont.className='print-continuation';
-    cont.textContent='Suite — détail de la prestation / fourniture';
-    newPage.content.appendChild(cont);
-    const nt=makePrintTable([]);
-    newPage.content.appendChild(nt);
-    nt.querySelector('tbody').appendChild(movable);
-    pages.splice(pages.length-1,0,newPage);
-    last=pages[pages.length-1];
-    void last.content.offsetHeight;
-  }
-
-  // If the closing block is intrinsically too large, keep it on its own page.
-  if(last.content.scrollHeight > last.content.clientHeight + 1){
-    last.content.querySelector('.print-last-block')?.remove();
-    const closing=makePrintPage(pages.length+1);
-    closing.content.appendChild(makePrintLastBlock());
-    pages.push(closing);
+    const newPage=makePrintPage(pages.length+1,null,false);
+    const cont=document.createElement('div'); cont.className='print-continuation'; cont.textContent='Suite — détail de la prestation / fourniture'; newPage.content.appendChild(cont);
+    const nt=makePrintTable([]); newPage.content.appendChild(nt); nt.querySelector('tbody').appendChild(movable);
+    pages.splice(pages.length-1,0,newPage); last=pages[pages.length-1]; void last.content.offsetHeight;
   }
 
   const total=pages.length;
-  pages.forEach((p,i)=>{
-    const no=p.page.querySelector('.page-no');
-    if(no) no.textContent=`Page ${i+1} / ${total}`;
-    root.appendChild(p.page);
-  });
-
-  // Restore normal hidden state. The @media print rule will reveal the root.
+  pages.forEach((p,i)=>{ const no=p.page.querySelector('.page-no'); if(no) no.textContent=`Page ${i+1} / ${total}`; root.appendChild(p.page); });
   Object.entries(oldStyle).forEach(([k,v])=>root.style[k]=v);
 }
 
-document.getElementById('print-btn').addEventListener('click', ()=>{
-  buildPrintPages();
-  // Let the browser finish layout before opening the print dialog.
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
-});
-window.addEventListener('afterprint', ()=>{
-  const root=document.getElementById('print-root');
-  if(root) root.innerHTML='';
-});
+document.getElementById('print-btn').addEventListener('click',()=>{ buildPrintPages(); requestAnimationFrame(()=>requestAnimationFrame(()=>window.print())); });
+window.addEventListener('afterprint',()=>{ const root=document.getElementById('print-root'); if(root) root.innerHTML=''; });
 document.getElementById('reset-btn').addEventListener('click', ()=>{
   state.editingId = null;
   document.getElementById('save-doc').textContent = '💾 Enregistrer dans l’historique';
