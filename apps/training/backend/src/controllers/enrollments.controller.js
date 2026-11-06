@@ -12,6 +12,26 @@ function sanitizeText(value, maxLength = 200) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Vérifie qu'une session appartient bien à la formation, qu'elle est ouverte
+// et (si demandé) qu'il reste de la place. Renvoie un message d'erreur ou null.
+async function checkSession(sessionId, courseId, { enforceCapacity = true, ignoreEnrollmentId = null } = {}) {
+  if (!sessionId) return null;
+  const session = await prisma.session.findUnique({ where: { id: sessionId } });
+  if (!session || session.courseId !== courseId) return 'Session introuvable pour cette formation.';
+  if (!session.active) return "Cette session n'est plus ouverte aux inscriptions.";
+  if (enforceCapacity && session.capacity) {
+    const taken = await prisma.enrollment.count({
+      where: {
+        sessionId,
+        statut: { not: 'DROPPED' },
+        ...(ignoreEnrollmentId && { id: { not: ignoreEnrollmentId } }),
+      },
+    });
+    if (taken >= session.capacity) return 'Cette session est complète. Choisissez une autre date.';
+  }
+  return null;
+}
+
 // Recherche ou création d'un apprenant
 async function findOrCreateStudent({ nom, prenom, email, telephone }) {
   if (email) {
@@ -68,6 +88,11 @@ async function createPublic(req, res, next) {
       return res.status(404).json({
         error: 'Formation introuvable ou indisponible.',
       });
+    }
+
+    const sessionError = await checkSession(sessionId, courseId);
+    if (sessionError) {
+      return res.status(409).json({ error: sessionError });
     }
 
     const student = await findOrCreateStudent({
@@ -135,6 +160,13 @@ async function createStaff(req, res, next) {
       return res.status(404).json({
         error: 'Formation introuvable.',
       });
+    }
+
+    // Le personnel peut dépasser la capacité (inscription sur liste, cas particulier),
+    // mais la session doit appartenir à la formation et être ouverte.
+    const sessionError = await checkSession(sessionId, courseId, { enforceCapacity: false });
+    if (sessionError) {
+      return res.status(409).json({ error: sessionError });
     }
 
     const student = await findOrCreateStudent({
@@ -250,6 +282,13 @@ async function update(req, res, next) {
         error:
           'Seul un SUPER_ADMIN peut modifier le montant payé.',
       });
+    }
+
+    if (sessionId) {
+      const current = await prisma.enrollment.findUnique({ where: { id } });
+      if (!current) return res.status(404).json({ error: 'Inscription introuvable.' });
+      const sessionError = await checkSession(sessionId, current.courseId, { enforceCapacity: false });
+      if (sessionError) return res.status(409).json({ error: sessionError });
     }
 
     const enrollment = await prisma.enrollment.update({

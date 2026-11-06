@@ -90,7 +90,7 @@ export default function Enroll() {
       if (!sessionStillValid) {
         setForm((current) => ({
           ...current,
-          sessionId: sessions[0].id,
+          sessionId: (sessions.find((x) => !x.full) || sessions[0]).id,
         }));
       }
     } else if (
@@ -389,6 +389,7 @@ export default function Enroll() {
                       <option
                         key={s.id}
                         value={s.id}
+                        disabled={s.full}
                       >
                         {formatDate(
                           s.startDate
@@ -397,6 +398,12 @@ export default function Enroll() {
                         {s.formateur
                           ? ` — ${s.formateur}`
                           : ''}
+
+                        {s.full
+                          ? ' — COMPLET'
+                          : s.seatsLeft != null
+                            ? ` — ${s.seatsLeft} place${s.seatsLeft > 1 ? 's' : ''} restante${s.seatsLeft > 1 ? 's' : ''}`
+                            : ''}
                       </option>
                     )
                   )}
