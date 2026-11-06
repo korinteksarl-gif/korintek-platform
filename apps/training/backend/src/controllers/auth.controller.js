@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { newState, consumeState, issueTicket, redeemTicket, safeEqual } = require('../utils/loginTicket');
 const prisma = require('../config/db');
 const { msalClient, SCOPES } = require('../config/msal');
 
@@ -7,6 +8,7 @@ async function microsoftLogin(req, res, next) {
     const authUrl = await msalClient.getAuthCodeUrl({
       scopes: SCOPES,
       redirectUri: process.env.AZURE_REDIRECT_URI,
+      state: newState(),
     });
     res.redirect(authUrl);
   } catch (err) {
@@ -16,7 +18,8 @@ async function microsoftLogin(req, res, next) {
 
 async function microsoftCallback(req, res, next) {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    if (!consumeState(state)) return res.redirect(`${process.env.FRONTEND_URL}/login?error=session_expiree`);
     if (!code) return res.status(400).send("Code d'autorisation manquant.");
 
     const tokenResponse = await msalClient.acquireTokenByCode({
@@ -48,7 +51,7 @@ async function microsoftCallback(req, res, next) {
     const payload = { id: user.id, email: user.email, role: user.role, nom: user.nom, prenom: user.prenom };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '8h' });
 
-    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?ticket=${issueTicket(token)}`);
   } catch (err) {
     next(err);
   }
@@ -58,4 +61,11 @@ async function me(req, res) {
   res.json({ user: req.user });
 }
 
-module.exports = { microsoftLogin, microsoftCallback, me };
+// POST /api/v1/auth/exchange — échange le ticket à usage unique contre le JWT
+async function exchange(req, res) {
+  const token = redeemTicket(req.body && req.body.ticket);
+  if (!token) return res.status(401).json({ error: 'Lien de connexion expiré. Reconnectez-vous.' });
+  res.json({ token });
+}
+
+module.exports = { microsoftLogin, microsoftCallback, me, exchange };

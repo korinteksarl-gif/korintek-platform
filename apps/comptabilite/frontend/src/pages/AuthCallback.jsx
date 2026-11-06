@@ -7,15 +7,19 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    if (!token) {
+    const ticket = searchParams.get('ticket');
+    const legacyToken = searchParams.get('token');
+    window.history.replaceState(null, '', window.location.pathname);
+    if (!ticket && !legacyToken) {
       navigate('/login?error=missing_code');
       return;
     }
 
-    localStorage.setItem('korintek_compta_token', token);
-
-    apiClient.get('/auth/me')
+    (ticket ? apiClient.post('/auth/exchange', { ticket }).then(({ data }) => data.token) : Promise.resolve(legacyToken))
+      .then((token) => {
+        localStorage.setItem('korintek_compta_token', token);
+        return apiClient.get('/auth/me');
+      })
       .then(({ data }) => {
         localStorage.setItem('korintek_compta_user', JSON.stringify(data.user));
         navigate(data.user.role === 'PENDING' ? '/pending' : '/journal');

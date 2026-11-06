@@ -23,4 +23,16 @@ const verifyLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { enrollmentLimiter, verifyLimiter };
+// Échange du ticket de connexion Microsoft (lot 1 sécurité)
+const exchangeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Réservé (Training n'a pas de connexion locale) — exporté pour garder la même interface
+const loginLimiter = exchangeLimiter;
+
+module.exports = { enrollmentLimiter, verifyLimiter, exchangeLimiter, loginLimiter };

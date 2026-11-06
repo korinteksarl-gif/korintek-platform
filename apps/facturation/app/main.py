@@ -144,6 +144,18 @@ def api_audit(user=Depends(require_perm('audit'))): return db.audit_list()
 def api_list_documents(user=Depends(require_user)):
     return db.list_documents(user['email'],user['role'])
 
+# Doit rester AVANT /api/documents/{doc_id} : sinon « export.xlsx » est pris pour un numéro (erreur 422)
+@app.get('/api/documents/export.xlsx')
+def api_export_documents(start:str,end:str,user=Depends(require_perm('export'))):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font,PatternFill
+    from io import BytesIO
+    docs=db.get_documents_in_range(start,end,user['email'],user['role']); wb=Workbook(); ws=wb.active; ws.title='Factures'
+    ws.append(['Type','Activité','Numéro','Date','Client','Téléphone','HT (FCFA)','TVA','Retenue (%)','Net à payer (FCFA)','Statut','Créé par'])
+    for c in ws[1]: c.font=Font(bold=True,color='FFFFFF'); c.fill=PatternFill('solid',fgColor='0E2226')
+    for d in docs: ws.append([d['type'],d.get('activityType') or '—',d['num'],d['date'],d['client'],d['clientTel'],d['ht'],'Oui' if d['tvaOn'] else 'Non',d['retenuePct'],d['total'],d['status'],d['created_by']])
+    buf=BytesIO(); wb.save(buf); buf.seek(0); db.audit(user['email'],user['role'],'EXPORT_XLSX','DOCUMENT',None,{'start':start,'end':end,'count':len(docs)}); return StreamingResponse(buf,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="korintek_factures_{start}_a_{end}.xlsx"'})
+
 @app.get('/api/documents/{doc_id}')
 def api_get_document(doc_id:int,user=Depends(require_user)):
     d=db.get_document(doc_id,user['email'],user['role'])
@@ -259,17 +271,6 @@ async def api_add_payment(doc_id:int,request:Request,user=Depends(require_perm('
 def api_search_clients(q:str='',user=Depends(require_user)):
     if len(q.strip())<2:return []
     return db.search_clients(q.strip())
-
-@app.get('/api/documents/export.xlsx')
-def api_export_documents(start:str,end:str,user=Depends(require_perm('export'))):
-    from openpyxl import Workbook
-    from openpyxl.styles import Font,PatternFill
-    from io import BytesIO
-    docs=db.get_documents_in_range(start,end,user['email'],user['role']); wb=Workbook(); ws=wb.active; ws.title='Factures'
-    ws.append(['Type','Activité','Numéro','Date','Client','Téléphone','HT (FCFA)','TVA','Retenue (%)','Net à payer (FCFA)','Statut','Créé par'])
-    for c in ws[1]: c.font=Font(bold=True,color='FFFFFF'); c.fill=PatternFill('solid',fgColor='0E2226')
-    for d in docs: ws.append([d['type'],d.get('activityType') or '—',d['num'],d['date'],d['client'],d['clientTel'],d['ht'],'Oui' if d['tvaOn'] else 'Non',d['retenuePct'],d['total'],d['status'],d['created_by']])
-    buf=BytesIO(); wb.save(buf); buf.seek(0); db.audit(user['email'],user['role'],'EXPORT_XLSX','DOCUMENT',None,{'start':start,'end':end,'count':len(docs)}); return StreamingResponse(buf,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':f'attachment; filename="korintek_factures_{start}_a_{end}.xlsx"'})
 
 @app.get('/api/dashboard/stats')
 def api_dashboard_stats(user=Depends(require_user)):

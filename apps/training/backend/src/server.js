@@ -21,11 +21,12 @@ const app = express();
 // MIDDLEWARES
 // ============================================================
 
+app.set('trust proxy', 1);
 app.use(helmet());
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map((o) => o.trim()) : process.env.NODE_ENV === 'production' ? false : '*',
     credentials: true,
   })
 );
