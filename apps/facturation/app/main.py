@@ -1,4 +1,4 @@
-import os, secrets, logging
+import os, secrets, logging, hmac
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -183,7 +183,7 @@ def _error_detail(exc, operation):
 async def api_create_document(request:Request,user=Depends(require_perm('create'))):
     try:
         doc=await request.json()
-        doc_id=db.create_document(doc,user['email'])
+        doc_id,num=db.create_document(doc,user['email'])
     except Exception as exc:
         raise HTTPException(500, detail=_error_detail(exc, 'create_document'))
 
@@ -191,8 +191,8 @@ async def api_create_document(request:Request,user=Depends(require_perm('create'
         db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email'])
     except Exception:
         logger.exception('Enregistrement client non bloquant pour document %s', doc_id)
-    _safe_audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num'),'type':doc.get('type'),'activityType':doc.get('activityType')})
-    return {'ok':True,'id':doc_id,'status':'DRAFT'}
+    _safe_audit(user['email'],user['role'],'CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':num,'type':doc.get('type'),'activityType':doc.get('activityType')})
+    return {'ok':True,'id':doc_id,'num':num,'status':'DRAFT'}
 
 @app.put('/api/documents/{doc_id}')
 async def api_update_document(doc_id:int,request:Request,user=Depends(require_user)):
@@ -202,8 +202,8 @@ async def api_update_document(doc_id:int,request:Request,user=Depends(require_us
         allowed=user['role']=='SUPER_ADMIN' or user['role']=='ADMIN' or (user['role']=='OPERATOR' and d['created_by']==user['email'])
         if not allowed: raise HTTPException(403,'Modification interdite')
         if d['status'] in {'ARCHIVED','CANCELLED'}: raise HTTPException(409,'Document verrouillé')
-        doc=await request.json(); ok=db.update_document(doc_id,doc,user['email'])
-        if not ok: raise HTTPException(409,'Document non modifiable')
+        doc=await request.json(); num=db.update_document(doc_id,doc,user['email'])
+        if not num: raise HTTPException(409,'Document non modifiable')
     except HTTPException:
         raise
     except Exception as exc:
@@ -212,8 +212,8 @@ async def api_update_document(doc_id:int,request:Request,user=Depends(require_us
         db.upsert_client(doc.get('client'),doc.get('clientTel'),doc.get('clientEmail'),doc.get('clientAdresse'),user['email'])
     except Exception:
         logger.exception('Mise à jour client non bloquante pour document %s', doc_id)
-    _safe_audit(user['email'],user['role'],'UPDATE_DOCUMENT','DOCUMENT',doc_id,{'num':doc.get('num')})
-    return {'ok':True}
+    _safe_audit(user['email'],user['role'],'UPDATE_DOCUMENT','DOCUMENT',doc_id,{'num':num})
+    return {'ok':True,'num':num}
 
 @app.post('/api/documents/{doc_id}/status')
 async def api_status(doc_id:int,request:Request,user=Depends(require_user)):
@@ -263,6 +263,7 @@ def api_payments(doc_id:int,user=Depends(require_perm('payments'))):
 async def api_add_payment(doc_id:int,request:Request,user=Depends(require_perm('payments'))):
     d=db.get_document(doc_id,user['email'],user['role'])
     if not d: raise HTTPException(404,'Document introuvable')
+    if d.get('status') in {'CANCELLED','ARCHIVED'}: raise HTTPException(409,'Document annulé ou archivé : paiement impossible')
     data=await request.json(); amount=int(data.get('amount') or 0); balance=int(d['total'] or 0)-db.get_payment_summary(doc_id)
     if amount<=0 or amount>balance: raise HTTPException(400,'Montant de paiement invalide')
     pid=db.add_payment(doc_id,amount,data.get('method','Autre'),data.get('payment_date'),data.get('reference'),data.get('notes'),user['email']); newpaid=db.get_payment_summary(doc_id); newstatus='PAID' if newpaid>=int(d['total'] or 0) else 'PARTIALLY_PAID'; db.change_status(doc_id,newstatus,user['email']); db.audit(user['email'],user['role'],'CREATE_PAYMENT','PAYMENT',pid,{'document_id':doc_id,'amount':amount}); return {'ok':True,'payment_id':pid,'paid':newpaid,'balance':max(0,int(d['total'] or 0)-newpaid),'status':newstatus}
@@ -276,3 +277,83 @@ def api_search_clients(q:str='',user=Depends(require_user)):
 def api_dashboard_stats(user=Depends(require_user)):
     if user['role'] not in {'SUPER_ADMIN','ADMIN','AUDITOR'}: raise HTTPException(403,'Tableau de bord global réservé à l’administration/audit')
     return db.get_dashboard_stats(user['email'],user['role'])
+
+
+# ---------------------------------------------------------------------------
+# Recouvrement : factures émises, encaissé, reste à payer, ancienneté
+# ---------------------------------------------------------------------------
+@app.get('/api/receivables')
+def api_receivables(user=Depends(require_user)):
+    if not ({'view','view_own'} & auth.role_permissions(user['role'])): raise HTTPException(403,'Droits insuffisants')
+    rows=db.get_receivables(user['email'],user['role'])
+    open_rows=[r for r in rows if r['balance']>0]
+    return {
+        'invoices':rows,
+        'totals':{
+            'billed':sum(int(r['total'] or 0) for r in rows),
+            'collected':sum(r['paid'] for r in rows),
+            'outstanding':sum(r['balance'] for r in open_rows),
+            'overdue_30':sum(r['balance'] for r in open_rows if (r['age_days'] or 0)>30),
+            'open_count':len(open_rows),
+        },
+    }
+
+@app.get('/recouvrement')
+def page_recouvrement(request: Request):
+    u=get_current_user(request)
+    if not u: return RedirectResponse('/login')
+    return templates.TemplateResponse('recouvrement.html',{'request':request,'user':u})
+
+# ---------------------------------------------------------------------------
+# API interne (autres modules KORINTEK) — protégée par INTERNAL_API_KEY
+# Idempotente : external_ref unique (ex. « training:enrollment:<id> »).
+# ---------------------------------------------------------------------------
+INTERNAL_API_KEY=os.environ.get('INTERNAL_API_KEY','')
+PAY_METHODS={'MOBILE_MONEY':'Mobile Money','CASH':'Espèces','BANK_TRANSFER':'Virement','OTHER':'Autre'}
+
+def require_internal(request: Request):
+    key=request.headers.get('x-internal-key','')
+    if not INTERNAL_API_KEY or not hmac.compare_digest(key.encode(), INTERNAL_API_KEY.encode()):
+        raise HTTPException(401,'Clé interne invalide')
+    return request.headers.get('x-source-module','interne')[:40]
+
+@app.post('/api/internal/invoices')
+async def internal_invoice(request: Request, source=Depends(require_internal)):
+    data=await request.json(); ref=(data.get('external_ref') or '').strip()[:120]
+    if not ref: raise HTTPException(400,'external_ref requis')
+    existing=db.get_document_by_external_ref(ref)
+    if existing: return {'ok':True,'id':existing['id'],'num':existing['num'],'created':False}
+    items=[{'name':str(i.get('name') or 'Prestation')[:200],'qty':int(i.get('qty') or 1),'price':int(i.get('price') or 0)} for i in (data.get('items') or [])]
+    if not items: raise HTTPException(400,'items requis')
+    ht=sum(i['qty']*i['price'] for i in items)
+    client=data.get('client') or {}
+    doc={'type':'facture','date':(data.get('date') or db.now_iso())[:10],'client':(client.get('nom') or 'Client')[:200],'clientTel':client.get('tel'),
+         'clientEmail':client.get('email'),'clientAdresse':client.get('adresse'),'items':items,'ht':ht,'total':ht,'tvaOn':False,'retenuePct':0,
+         'conditions':data.get('conditions'),'activityType':data.get('activityType') or 'FORMATION'}
+    actor=f'system:{source}'
+    try:
+        doc_id,num=db.create_document(doc,actor,external_ref=ref,source=source,status='ISSUED')
+    except Exception:
+        existing=db.get_document_by_external_ref(ref)  # création simultanée : on renvoie l'existant
+        if existing: return {'ok':True,'id':existing['id'],'num':existing['num'],'created':False}
+        raise
+    try: db.upsert_client(doc['client'],doc['clientTel'],doc['clientEmail'],doc['clientAdresse'],actor)
+    except Exception: logger.exception('Client interne non enregistré')
+    _safe_audit(actor,'SYSTEM','CREATE_DOCUMENT','DOCUMENT',doc_id,{'num':num,'external_ref':ref})
+    return {'ok':True,'id':doc_id,'num':num,'created':True}
+
+@app.post('/api/internal/invoices/payments')
+async def internal_payment(request: Request, source=Depends(require_internal)):
+    """Synchronise le total encaissé (cumul) : seul l'écart positif est enregistré."""
+    data=await request.json(); ref=(data.get('external_ref') or '').strip()[:120]
+    d=db.get_document_by_external_ref(ref) if ref else None
+    if not d: raise HTTPException(404,'Facture introuvable pour cette référence')
+    if d.get('status') in {'CANCELLED','ARCHIVED'}: return {'ok':True,'skipped':'document annulé ou archivé'}
+    target=int(data.get('total_paid') or 0); already=db.get_payment_summary(d['id']); total=int(d['total'] or 0)
+    delta=min(target,total)-already
+    if delta<=0: return {'ok':True,'paid':already,'recorded':0}
+    actor=f'system:{source}'
+    pid=db.add_payment(d['id'],delta,PAY_METHODS.get(data.get('method'),data.get('method') or 'Autre'),(data.get('date') or db.now_iso())[:10],data.get('reference'),f'Synchronisé depuis {source}',actor)
+    newpaid=already+delta; db.change_status(d['id'],'PAID' if newpaid>=total else 'PARTIALLY_PAID',actor)
+    _safe_audit(actor,'SYSTEM','CREATE_PAYMENT','PAYMENT',pid,{'document_id':d['id'],'amount':delta,'external_ref':ref})
+    return {'ok':True,'paid':newpaid,'recorded':delta}

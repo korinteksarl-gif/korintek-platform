@@ -44,6 +44,9 @@ services:
         value: production
       - key: FRONTEND_URL
         value: https://korintek-crm-frontend.onrender.com
+      # Lot 3 : origines autorisées pour le formulaire du site (POST /api/v1/public/leads)
+      - key: PUBLIC_ORIGINS
+        value: https://korintek.com,https://www.korintek.com
       - key: SEED_ADMIN_EMAIL
         value: admin@korintek.com
       - key: SEED_ADMIN_PASSWORD

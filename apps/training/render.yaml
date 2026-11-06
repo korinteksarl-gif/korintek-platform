@@ -34,6 +34,11 @@ services:
         # et queue-manager). À remplacer plus tard si un 3e domaine devient possible.
       - key: NODE_ENV
         value: production
+      # Lot 3 : facture automatique au premier paiement (laisser vide pour désactiver)
+      - key: FACTURATION_URL
+        value: https://korintek-facturation-v2.onrender.com
+      - key: INTERNAL_API_KEY
+        sync: false
 
   - type: web
     name: korintek-training-frontend

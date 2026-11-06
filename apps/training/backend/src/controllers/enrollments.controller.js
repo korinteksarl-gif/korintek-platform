@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
+const { syncEnrollmentInBackground } = require('../utils/facturation');
 
 // ============================================================
 // UTILITAIRES
@@ -197,6 +198,13 @@ async function createStaff(req, res, next) {
       },
     });
 
+    if (paid > 0) {
+      prisma.enrollment
+        .findUnique({ where: { id: enrollment.id }, include: { student: true, course: true, session: true } })
+        .then((full) => syncEnrollmentInBackground(full, req.user?.id))
+        .catch(() => {});
+    }
+
     await logAction(
       req.user?.id,
       'STAFF_ENROLLMENT_CREATED',
@@ -323,6 +331,10 @@ async function update(req, res, next) {
         certificate: true,
       },
     });
+
+    if (amountPaid !== undefined || paymentMethod !== undefined) {
+      syncEnrollmentInBackground(enrollment, req.user?.id);
+    }
 
     await logAction(
       req.user?.id,
