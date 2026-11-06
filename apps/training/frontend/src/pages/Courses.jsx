@@ -14,6 +14,10 @@ export default function Courses() {
     price: '',
   });
   const [sessionForms, setSessionForms] = useState({});
+  const [editingCourseId, setEditingCourseId] = useState(null);
+  const [courseEdit, setCourseEdit] = useState({});
+  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [sessionEdit, setSessionEdit] = useState({});
   const navigate = useNavigate();
 
   async function load() {
@@ -74,6 +78,59 @@ export default function Courses() {
     }
   }
 
+  function startEditCourse(c) {
+    setEditingCourseId(c.id);
+    setCourseEdit({
+      title: c.title || '',
+      description: c.description || '',
+      durationHours: c.durationHours ?? '',
+      price: c.price ?? '',
+    });
+  }
+
+  async function saveCourse(id) {
+    if (!courseEdit.title?.trim()) {
+      alert('Le titre est requis.');
+      return;
+    }
+    try {
+      await apiClient.put(`/courses/${id}`, courseEdit);
+      setEditingCourseId(null);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Impossible de modifier la formation.');
+    }
+  }
+
+  function startEditSession(s) {
+    setEditingSessionId(s.id);
+    setSessionEdit({
+      startDate: s.startDate ? String(s.startDate).slice(0, 10) : '',
+      trainerId: s.trainerId || '',
+      formateur: s.formateur || '',
+      capacity: s.capacity ?? '',
+    });
+  }
+
+  async function saveSession(id) {
+    if (!sessionEdit.startDate) {
+      alert('La date de début est requise.');
+      return;
+    }
+    try {
+      await apiClient.put(`/courses/sessions/${id}`, {
+        startDate: sessionEdit.startDate,
+        trainerId: sessionEdit.trainerId || null,
+        formateur: sessionEdit.formateur || null,
+        capacity: sessionEdit.capacity === '' ? null : Number(sessionEdit.capacity),
+      });
+      setEditingSessionId(null);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Impossible de modifier la session.');
+    }
+  }
+
   async function addSession(courseId) {
     const s = sessionForms[courseId] || {};
 
@@ -96,6 +153,7 @@ export default function Courses() {
         startDate: s.startDate,
         trainerId: s.trainerId || null,
         formateur: s.formateur || null,
+        capacity: s.capacity ? Number(s.capacity) : null,
       };
 
       await apiClient.post(
@@ -364,18 +422,73 @@ export default function Courses() {
 
                   </div>
 
-                  <button
-                    onClick={() => toggleActive(c)}
-                    className={`text-xs font-medium rounded-full px-3 py-1 ${
-                      c.active
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {c.active ? 'Active' : 'Masquée'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => (editingCourseId === c.id ? setEditingCourseId(null) : startEditCourse(c))}
+                      className="text-xs font-medium text-korintek-tealDark hover:underline"
+                    >
+                      {editingCourseId === c.id ? 'Annuler' : 'Modifier'}
+                    </button>
+                    <button
+                      onClick={() => toggleActive(c)}
+                      className={`text-xs font-medium rounded-full px-3 py-1 ${
+                        c.active
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {c.active ? 'Active' : 'Masquée'}
+                    </button>
+                  </div>
 
                 </div>
+
+                {editingCourseId === c.id && (
+                  <div className="mt-4 grid md:grid-cols-2 gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <input
+                      value={courseEdit.title}
+                      onChange={(e) => setCourseEdit({ ...courseEdit, title: e.target.value })}
+                      placeholder="Titre"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+                    />
+                    <textarea
+                      value={courseEdit.description}
+                      onChange={(e) => setCourseEdit({ ...courseEdit, description: e.target.value })}
+                      placeholder="Description"
+                      rows={2}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+                    />
+                    <label className="text-xs text-slate-500">
+                      Durée (heures)
+                      <input
+                        type="number"
+                        min="0"
+                        value={courseEdit.durationHours}
+                        onChange={(e) => setCourseEdit({ ...courseEdit, durationHours: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs text-slate-500">
+                      Prix (FCFA)
+                      <input
+                        type="number"
+                        min="0"
+                        value={courseEdit.price}
+                        onChange={(e) => setCourseEdit({ ...courseEdit, price: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <p className="md:col-span-2 text-[11px] text-slate-400">
+                      Le nouveau prix s’applique aux prochaines inscriptions ; les inscriptions existantes gardent leur montant.
+                    </p>
+                    <button
+                      onClick={() => saveCourse(c.id)}
+                      className="md:col-span-2 bg-korintek-teal hover:bg-korintek-tealDark text-white rounded-lg py-2 text-sm font-medium"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
+                )}
 
                 {/* SESSIONS */}
                 <div className="mt-4 border-t border-slate-100 pt-3">
@@ -431,17 +544,82 @@ export default function Courses() {
                             )}
                           </div>
 
+                          {/* PLACES */}
+                          <div className="mt-1">
+                            <span
+                              className={`font-medium rounded-full px-2 py-0.5 ${
+                                s.full
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {s.capacity
+                                ? `${s.seatsTaken ?? 0} / ${s.capacity} places${s.full ? ' — complet' : ''}`
+                                : `${s.seatsTaken ?? 0} inscrit(s) · capacité illimitée`}
+                            </span>
+                          </div>
+
+                          {editingSessionId === s.id && (
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+                              <input
+                                type="date"
+                                value={sessionEdit.startDate}
+                                onChange={(e) => setSessionEdit({ ...sessionEdit, startDate: e.target.value })}
+                                className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <select
+                                value={sessionEdit.trainerId}
+                                onChange={(e) => setSessionEdit({ ...sessionEdit, trainerId: e.target.value })}
+                                className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                              >
+                                <option value="">Aucun / texte libre</option>
+                                {trainers.map((t) => (
+                                  <option key={t.id} value={t.id}>{t.prenom} {t.nom}</option>
+                                ))}
+                              </select>
+                              <input
+                                placeholder="Nom libre du formateur"
+                                value={sessionEdit.formateur}
+                                onChange={(e) => setSessionEdit({ ...sessionEdit, formateur: e.target.value })}
+                                className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Places (vide = illimité)"
+                                value={sessionEdit.capacity}
+                                onChange={(e) => setSessionEdit({ ...sessionEdit, capacity: e.target.value })}
+                                className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <button
+                                onClick={() => saveSession(s.id)}
+                                className="md:col-span-4 bg-korintek-teal hover:bg-korintek-tealDark text-white rounded-lg py-1.5 text-xs font-medium"
+                              >
+                                Enregistrer la session
+                              </button>
+                            </div>
+                          )}
+
                         </div>
 
-                        {/* DELETE */}
-                        <button
-                          onClick={() =>
-                            removeSession(s.id)
-                          }
-                          className="text-red-500 hover:text-red-700 font-medium ml-3"
-                        >
-                          Supprimer
-                        </button>
+                        <div className="flex flex-col items-end gap-1 ml-3">
+                          <button
+                            onClick={() =>
+                              editingSessionId === s.id ? setEditingSessionId(null) : startEditSession(s)
+                            }
+                            className="text-korintek-tealDark hover:underline font-medium"
+                          >
+                            {editingSessionId === s.id ? 'Annuler' : 'Modifier'}
+                          </button>
+                          <button
+                            onClick={() =>
+                              removeSession(s.id)
+                            }
+                            className="text-red-500 hover:text-red-700 font-medium"
+                          >
+                            Supprimer
+                          </button>
+                        </div>
 
                       </div>
 
@@ -456,7 +634,7 @@ export default function Courses() {
                   </div>
 
                   {/* AJOUT SESSION */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
 
                     {/* DATE DE DEBUT */}
                     <div>
@@ -541,6 +719,29 @@ export default function Courses() {
                             [c.id]: {
                               ...sessionForms[c.id],
                               formateur: e.target.value,
+                            },
+                          })
+                        }
+                        className="rounded-lg border border-slate-300 px-2 py-1 text-xs w-full"
+                      />
+                    </div>
+
+                    {/* PLACES */}
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">
+                        Places
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Illimité"
+                        value={sessionForms[c.id]?.capacity || ''}
+                        onChange={(e) =>
+                          setSessionForms({
+                            ...sessionForms,
+                            [c.id]: {
+                              ...sessionForms[c.id],
+                              capacity: e.target.value,
                             },
                           })
                         }

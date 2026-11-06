@@ -1,15 +1,33 @@
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
 
+// Places occupées = inscriptions non abandonnées rattachées à la session
+const SEATS_COUNT = { _count: { select: { enrollments: { where: { statut: { not: 'DROPPED' } } } } } };
+
+function withSeats(course) {
+  return {
+    ...course,
+    sessions: (course.sessions || []).map(({ _count, ...s }) => {
+      const seatsTaken = _count ? _count.enrollments : 0;
+      return {
+        ...s,
+        seatsTaken,
+        seatsLeft: s.capacity ? Math.max(0, s.capacity - seatsTaken) : null,
+        full: !!s.capacity && seatsTaken >= s.capacity,
+      };
+    }),
+  };
+}
+
 // GET /api/v1/courses — public (catalogue) : ne renvoie que les formations actives
 async function listPublic(req, res, next) {
   try {
     const courses = await prisma.course.findMany({
       where: { active: true },
-      include: { sessions: { where: { active: true }, orderBy: { startDate: 'asc' } } },
+      include: { sessions: { where: { active: true }, orderBy: { startDate: 'asc' }, include: SEATS_COUNT } },
       orderBy: { title: 'asc' },
     });
-    res.json({ courses });
+    res.json({ courses: courses.map(withSeats) });
   } catch (err) {
     next(err);
   }
@@ -20,12 +38,12 @@ async function listAll(req, res, next) {
   try {
     const courses = await prisma.course.findMany({
       include: {
-        sessions: { include: { trainer: true }, orderBy: { startDate: 'asc' } },
+        sessions: { include: { trainer: true, ...SEATS_COUNT }, orderBy: { startDate: 'asc' } },
         _count: { select: { enrollments: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json({ courses });
+    res.json({ courses: courses.map(withSeats) });
   } catch (err) {
     next(err);
   }

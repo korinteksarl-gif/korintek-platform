@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';
 import Logo from '../components/Logo.jsx';
@@ -21,11 +21,60 @@ const STATUT_BADGE = {
   DROPPED: 'bg-red-100 text-red-700',
 };
 
+const fcfa = (n) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
+
+function normalize(v) {
+  return String(v || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Export CSV lisible directement par Excel (séparateur « ; », encodage UTF-8 avec BOM)
+function exportCsv(rows) {
+  const header = ['Date inscription', 'Prénom', 'Nom', 'Email', 'Téléphone', 'Formation', 'Session', 'Statut', 'Montant dû (FCFA)', 'Payé (FCFA)', 'Reste (FCFA)', 'Mode de paiement', 'Via', 'Attestation'];
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = rows.map((e) => [
+    new Date(e.createdAt).toLocaleDateString('fr-FR'),
+    e.student?.prenom,
+    e.student?.nom,
+    e.student?.email,
+    e.student?.telephone,
+    e.course?.title,
+    e.session?.startDate ? new Date(e.session.startDate).toLocaleDateString('fr-FR') : '',
+    STATUT_LABELS[e.statut] || e.statut,
+    e.amountDue,
+    e.amountPaid,
+    Math.max(0, (e.amountDue || 0) - (e.amountPaid || 0)),
+    e.paymentMethod || '',
+    e.enrolledVia === 'SELF' ? 'En ligne' : 'Équipe',
+    e.certificate?.numero || '',
+  ].map(esc).join(';'));
+  const blob = new Blob(['\ufeff' + [header.join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `korintek_inscriptions_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Dashboard() {
   const [enrollments, setEnrollments] = useState([]);
   const [courses, setCourses] = useState([]);
 
   const [showForm, setShowForm] = useState(false);
+
+  // Recherche et filtres (côté navigateur)
+  const [search, setSearch] = useState('');
+  const [filterCourse, setFilterCourse] = useState('');
+  const [filterStatut, setFilterStatut] = useState('');
+  const [filterPayment, setFilterPayment] = useState('');
 
   const [form, setForm] = useState({
     nom: '',
@@ -33,6 +82,7 @@ export default function Dashboard() {
     email: '',
     telephone: '',
     courseId: '',
+    sessionId: '',
     paymentMethod: '',
     amountPaid: '',
   });
@@ -66,6 +116,35 @@ export default function Dashboard() {
   );
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const canSeeMoney = ['SUPER_ADMIN', 'ADMIN', 'FINANCE'].includes(user?.role);
+
+  const filtered = useMemo(() => {
+    const q = normalize(search.trim());
+    return enrollments.filter((e) => {
+      if (filterCourse && e.courseId !== filterCourse) return false;
+      if (filterStatut && e.statut !== filterStatut) return false;
+      const reste = (e.amountDue || 0) - (e.amountPaid || 0);
+      if (filterPayment === 'DUE' && !(reste > 0 && e.statut !== 'DROPPED')) return false;
+      if (filterPayment === 'SOLDE' && reste > 0) return false;
+      if (!q) return true;
+      const hay = normalize([e.student?.prenom, e.student?.nom, e.student?.email, e.student?.telephone, e.course?.title, e.certificate?.numero].join(' '));
+      return q.split(/\s+/).every((w) => hay.includes(w));
+    });
+  }, [enrollments, search, filterCourse, filterStatut, filterPayment]);
+
+  const stats = useMemo(() => {
+    const active = filtered.filter((e) => e.statut !== 'DROPPED');
+    const encaisse = filtered.reduce((t, e) => t + (e.amountPaid || 0), 0);
+    const reste = active.reduce((t, e) => t + Math.max(0, (e.amountDue || 0) - (e.amountPaid || 0)), 0);
+    const attestations = filtered.filter((e) => e.certificate).length;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const ceMois = filtered.filter((e) => new Date(e.createdAt) >= monthStart).length;
+    return { total: filtered.length, actives: active.length, encaisse, reste, attestations, ceMois };
+  }, [filtered]);
+
+  const formSessions = (courses.find((c) => c.id === form.courseId)?.sessions) || [];
+  const hasFilters = search || filterCourse || filterStatut || filterPayment;
 
   // ---------------------------------------------------------------------------
   // LOAD
@@ -116,6 +195,7 @@ export default function Dashboard() {
         email: '',
         telephone: '',
         courseId: '',
+        sessionId: '',
         paymentMethod: '',
         amountPaid: '',
       });
@@ -386,6 +466,77 @@ export default function Dashboard() {
 
       <main className="p-6 max-w-6xl mx-auto space-y-6">
 
+        {/* INDICATEURS */}
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-slate-100 rounded-xl shadow-card p-4">
+            <p className="text-xs text-slate-400">Inscriptions{hasFilters ? ' (filtrées)' : ''}</p>
+            <p className="font-heading text-2xl font-bold text-korintek-ink mt-1">{stats.total}</p>
+            <p className="text-[11px] text-slate-400 mt-1">{stats.ceMois} ce mois-ci</p>
+          </div>
+          {canSeeMoney && (
+            <div className="bg-white border border-slate-100 rounded-xl shadow-card p-4">
+              <p className="text-xs text-slate-400">Encaissé</p>
+              <p className="font-heading text-2xl font-bold text-emerald-600 mt-1">{fcfa(stats.encaisse)}</p>
+            </div>
+          )}
+          {canSeeMoney && (
+            <div className="bg-white border border-slate-100 rounded-xl shadow-card p-4">
+              <p className="text-xs text-slate-400">Reste à encaisser</p>
+              <p className="font-heading text-2xl font-bold text-amber-600 mt-1">{fcfa(stats.reste)}</p>
+              <button onClick={() => setFilterPayment('DUE')} className="text-[11px] text-korintek-tealDark hover:underline mt-1">Voir les impayés</button>
+            </div>
+          )}
+          <div className="bg-white border border-slate-100 rounded-xl shadow-card p-4">
+            <p className="text-xs text-slate-400">Attestations délivrées</p>
+            <p className="font-heading text-2xl font-bold text-korintek-ink mt-1">{stats.attestations}</p>
+          </div>
+        </section>
+
+        {/* RECHERCHE + FILTRES */}
+        <section className="bg-white border border-slate-100 rounded-xl shadow-card p-3 flex flex-wrap gap-2 items-center">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher : nom, téléphone, email, n° d’attestation…"
+            className="flex-1 min-w-[220px] rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <select value={filterCourse} onChange={(e) => setFilterCourse(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="">Toutes les formations</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
+          </select>
+          <select value={filterStatut} onChange={(e) => setFilterStatut(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="">Tous les statuts</option>
+            {Object.entries(STATUT_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          {canSeeMoney && (
+            <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="">Tous les paiements</option>
+              <option value="DUE">Reste à payer</option>
+              <option value="SOLDE">Soldé</option>
+            </select>
+          )}
+          {hasFilters && (
+            <button
+              onClick={() => { setSearch(''); setFilterCourse(''); setFilterStatut(''); setFilterPayment(''); }}
+              className="text-sm text-slate-500 hover:text-slate-800 px-2"
+            >
+              Effacer
+            </button>
+          )}
+          <button
+            onClick={() => exportCsv(filtered)}
+            disabled={!filtered.length}
+            className="text-sm font-medium rounded-lg border border-korintek-teal text-korintek-tealDark hover:bg-korintek-tealLighter px-3 py-2 disabled:opacity-40"
+          >
+            Exporter ({filtered.length}) · Excel
+          </button>
+        </section>
+
         {/* ADD STUDENT */}
 
         <button
@@ -464,6 +615,7 @@ export default function Dashboard() {
                 setForm({
                   ...form,
                   courseId: e.target.value,
+                  sessionId: '',
                 })
               }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -481,6 +633,22 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
+
+            {formSessions.length > 0 && (
+              <select
+                value={form.sessionId}
+                onChange={(e) => setForm({ ...form, sessionId: e.target.value })}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Session (facultatif)...</option>
+                {formSessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {new Date(s.startDate).toLocaleDateString('fr-FR')}
+                    {s.capacity ? ` — ${s.seatsTaken}/${s.capacity}${s.full ? ' (complet)' : ''}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               value={form.paymentMethod}
@@ -578,7 +746,15 @@ export default function Dashboard() {
 
               <tbody>
 
-                {enrollments.map((e) => {
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-400">
+                      {enrollments.length ? 'Aucune inscription ne correspond à la recherche.' : 'Aucune inscription pour le moment.'}
+                    </td>
+                  </tr>
+                )}
+
+                {filtered.map((e) => {
 
                   const paymentComplete =
                     Number(e.amountPaid) >=
