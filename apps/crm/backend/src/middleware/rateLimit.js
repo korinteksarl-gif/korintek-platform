@@ -10,4 +10,13 @@ const loginLimiter = rateLimit({
   message: { error: 'Trop de tentatives de connexion. Réessayez plus tard.' },
 });
 
-module.exports = { loginLimiter };
+// Échange du ticket de connexion : volume normal très faible.
+const exchangeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+});
+
+module.exports = { loginLimiter, exchangeLimiter };

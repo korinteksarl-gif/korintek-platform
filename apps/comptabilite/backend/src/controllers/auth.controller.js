@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { newState, consumeState, issueTicket, redeemTicket, safeEqual } = require('../utils/loginTicket');
 const prisma = require('../config/db');
 const { logAction } = require('../utils/audit');
 
@@ -23,12 +24,14 @@ function microsoftLogin(req, res) {
   authorizeUrl.searchParams.set('redirect_uri', REDIRECT_URI);
   authorizeUrl.searchParams.set('response_mode', 'query');
   authorizeUrl.searchParams.set('scope', 'openid profile email User.Read');
+  authorizeUrl.searchParams.set('state', newState());
   res.redirect(authorizeUrl.toString());
 }
 
 async function microsoftCallback(req, res, next) {
   try {
-    const { code, error: oauthError } = req.query;
+    const { code, state, error: oauthError } = req.query;
+    if (!oauthError && !consumeState(state)) return res.redirect(`${process.env.FRONTEND_URL}/login?error=session_expiree`);
     if (oauthError) return res.redirect(`${process.env.FRONTEND_URL}/login?error=microsoft_denied`);
     if (!code) return res.redirect(`${process.env.FRONTEND_URL}/login?error=missing_code`);
 
@@ -73,7 +76,7 @@ async function microsoftCallback(req, res, next) {
 
     const jwtToken = issueToken(user);
     await logAction(user.id, 'SSO_LOGIN', { email });
-    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${jwtToken}`);
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?ticket=${issueTicket(jwtToken)}`);
   } catch (err) {
     next(err);
   }
@@ -90,7 +93,7 @@ async function login(req, res, next) {
     const expectedEmail = (process.env.SEED_ADMIN_EMAIL || '').toLowerCase();
     const expectedPassword = process.env.SEED_ADMIN_PASSWORD;
 
-    if (email.toLowerCase() !== expectedEmail || password !== expectedPassword) {
+    if (!expectedPassword || !safeEqual(email.toLowerCase(), expectedEmail) || !safeEqual(password, expectedPassword)) {
       return res.status(401).json({ error: 'Identifiants invalides.' });
     }
 
@@ -109,4 +112,11 @@ async function me(req, res) {
   res.json({ user: publicUser(req.user) });
 }
 
-module.exports = { microsoftLogin, microsoftCallback, login, me };
+// POST /api/v1/auth/exchange — échange le ticket à usage unique contre le JWT
+async function exchange(req, res) {
+  const token = redeemTicket(req.body && req.body.ticket);
+  if (!token) return res.status(401).json({ error: 'Lien de connexion expiré. Reconnectez-vous.' });
+  res.json({ token });
+}
+
+module.exports = { microsoftLogin, microsoftCallback, login, me, exchange };

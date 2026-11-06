@@ -10,7 +10,18 @@ export default function AuthCallback() {
   useEffect(() => {
     async function finalize() {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
+      let token = params.get('token');
+      const ticket = params.get('ticket');
+      // Nettoie l'adresse tout de suite (le ticket ne doit pas rester dans l'historique)
+      window.history.replaceState(null, '', window.location.pathname);
+      if (ticket) {
+        try {
+          const { data } = await apiClient.post('/auth/exchange', { ticket });
+          token = data.token;
+        } catch {
+          token = null;
+        }
+      }
       if (!token) { setStatus('error'); return; }
 
       localStorage.setItem('korintek_training_token', token);
