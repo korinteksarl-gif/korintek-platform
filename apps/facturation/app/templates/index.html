@@ -348,6 +348,7 @@
 <div class="topbar no-print">
   <span class="tb-user">{{ user.name }} ({{ user.email }})</span>
   <span class="tb-role admin">{{ user.role or 'OPERATOR' }}</span>
+  <a href="/recouvrement" class="tb-logout" style="margin-right:6px">💰 Recouvrement</a>
   <a href="/logout" class="tb-logout">Déconnexion</a>
 </div>
 <div class="app">
@@ -411,7 +412,7 @@
         <div class="row2">
           <div>
             <label>Numéro</label>
-            <input type="text" id="docnum">
+            <input type="text" id="docnum" readonly title="Numéro attribué automatiquement à l’enregistrement (suite continue, sans doublon)" style="background:#f1f5f9;color:#475569">
           </div>
           <div>
             <label>Date</label>
@@ -913,8 +914,8 @@ function genNumber(type){
   const prefix = type === 'facture' ? 'FAC' : (type === 'devis' ? 'DEV' : 'PRO');
   const d = new Date();
   const ym = d.getFullYear().toString() + String(d.getMonth()+1).padStart(2,'0');
-  const rand = Math.floor(100 + Math.random()*900);
-  return `${prefix}-${ym}-${rand}`;
+  // Numéro définitif attribué par le serveur à l'enregistrement (suite continue PFX-AAAA-NNNN)
+  return `${prefix}-${d.getFullYear()}-PROVISOIRE`;
 }
 
 const ACTIVITY_LABELS = {
@@ -1599,6 +1600,11 @@ document.getElementById('save-doc').addEventListener('click', async ()=>{
     if(res.ok){
       const saved = await res.json();
       doc.id = state.editingId || saved.id;
+      if (saved.num) {
+        doc.num = saved.num;
+        document.getElementById('docnum').value = saved.num;
+        try { renderPreview(); } catch (e) {}
+      }
       state.editingId = null;
       document.getElementById('save-doc').textContent = '💾 Enregistrer dans l’historique';
     } else {

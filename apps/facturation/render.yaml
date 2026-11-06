@@ -21,3 +21,6 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Lot 3 : clé partagée avec korintek-training-api (API interne /api/internal/*)
+      - key: INTERNAL_API_KEY
+        sync: false

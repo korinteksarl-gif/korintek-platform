@@ -64,6 +64,15 @@ def init_db():
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS archived_at TEXT",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS cancelled_reason TEXT",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS activity_type TEXT",
+            # Lot 3 : numérotation continue côté serveur + liens inter-modules
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS external_ref TEXT",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS source TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS documents_external_ref_uniq ON documents(external_ref) WHERE external_ref IS NOT NULL",
+            """CREATE TABLE IF NOT EXISTS doc_counters (
+                doc_type TEXT NOT NULL, year INTEGER NOT NULL, last INTEGER NOT NULL,
+                PRIMARY KEY (doc_type, year))""",
+            # Nouveau format PFX-AAAA-NNNN : unique. Les anciens numéros (aléatoires) ne sont pas concernés.
+            "CREATE UNIQUE INDEX IF NOT EXISTS documents_num_seq_uniq ON documents(num) WHERE num ~ '^[A-Z]{3}-[0-9]{4}-[0-9]{4,}$'",
         ]: cur.execute(sql)
 
 
@@ -131,13 +140,46 @@ def get_document(doc_id,email,role):
         d=_row_to_doc(r)
         return d if role in {"SUPER_ADMIN","ADMIN","AUDITOR"} or d["created_by"]==email else None
 
-def create_document(doc,created_by):
+DOC_PREFIX = {"facture": "FAC", "devis": "DEV", "proforma": "PRO"}
+
+def _next_number(cur, doc_type, doc_date=None):
+    """Numéro continu par type et par année (ex. FAC-2026-0001), attribué par le serveur.
+    L'UPSERT verrouille la ligne du compteur : deux enregistrements simultanés
+    ne peuvent pas obtenir le même numéro."""
+    prefix = DOC_PREFIX.get(doc_type, "PRO")
+    try:
+        year = int(str(doc_date)[:4])
+    except (TypeError, ValueError):
+        year = datetime.now(timezone.utc).year
+    if year < 2000 or year > 2100:
+        year = datetime.now(timezone.utc).year
+    cur.execute("""INSERT INTO doc_counters(doc_type, year, last) VALUES (%s, %s, 1)
+                   ON CONFLICT (doc_type, year) DO UPDATE SET last = doc_counters.last + 1
+                   RETURNING last""", (prefix, year))
+    return f"{prefix}-{year}-{cur.fetchone()[0]:04d}"
+
+def create_document(doc,created_by,external_ref=None,source=None,status='DRAFT'):
     with get_conn() as conn:
-        cur=conn.cursor(); cur.execute("""INSERT INTO documents(doc_type,num,doc_date,client_nom,client_tel,client_email,client_adresse,items_json,ht,total,tva_on,retenue_pct,conditions,created_by,created_at,status,activity_type) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DRAFT',%s) RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),created_by,now_iso(),doc.get("activityType"))); return cur.fetchone()[0]
+        cur=conn.cursor()
+        num=_next_number(cur, doc.get("type"), doc.get("date"))
+        cur.execute("""INSERT INTO documents(doc_type,num,doc_date,client_nom,client_tel,client_email,client_adresse,items_json,ht,total,tva_on,retenue_pct,conditions,created_by,created_at,status,activity_type,external_ref,source) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",(doc.get("type"),num,doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),created_by,now_iso(),status,doc.get("activityType"),external_ref,source))
+        return cur.fetchone()[0], num
+
+def get_document_by_external_ref(external_ref):
+    with get_conn() as conn:
+        cur=conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor); cur.execute("SELECT * FROM documents WHERE external_ref=%s",(external_ref,)); r=cur.fetchone()
+        return _row_to_doc(r) if r else None
 
 def update_document(doc_id,doc,actor):
+    """Le numéro n'est jamais modifiable à la main : il est conservé, ou réattribué
+    si le type change (ex. un devis transformé en facture reçoit un numéro FAC-)."""
     with get_conn() as conn:
-        cur=conn.cursor(); cur.execute("""UPDATE documents SET doc_type=%s,num=%s,doc_date=%s,client_nom=%s,client_tel=%s,client_email=%s,client_adresse=%s,items_json=%s,ht=%s,total=%s,tva_on=%s,retenue_pct=%s,conditions=%s,activity_type=%s,updated_by=%s,updated_at=%s WHERE id=%s AND status NOT IN ('ARCHIVED','CANCELLED') RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),doc.get("activityType"),actor,now_iso(),doc_id)); return bool(cur.fetchone())
+        cur=conn.cursor()
+        cur.execute("SELECT doc_type,num FROM documents WHERE id=%s",(doc_id,)); row=cur.fetchone()
+        if not row: return None
+        num = row[1] if (doc.get("type") or row[0]) == row[0] else _next_number(cur, doc.get("type"), doc.get("date"))
+        doc = {**doc, "num": num}
+        cur.execute("""UPDATE documents SET doc_type=%s,num=%s,doc_date=%s,client_nom=%s,client_tel=%s,client_email=%s,client_adresse=%s,items_json=%s,ht=%s,total=%s,tva_on=%s,retenue_pct=%s,conditions=%s,activity_type=%s,updated_by=%s,updated_at=%s WHERE id=%s AND COALESCE(status,'DRAFT') NOT IN ('ARCHIVED','CANCELLED') RETURNING id""",(doc.get("type"),doc.get("num"),doc.get("date"),doc.get("client"),doc.get("clientTel"),doc.get("clientEmail"),doc.get("clientAdresse"),json.dumps(doc.get("items",[])),doc.get("ht",0),doc.get("total",0),bool(doc.get("tvaOn")),doc.get("retenuePct",0),doc.get("conditions"),doc.get("activityType"),actor,now_iso(),doc_id)); return num if cur.fetchone() else None
 
 def change_status(doc_id,status,actor,reason=None):
     allowed={"DRAFT","VALIDATED","ISSUED","SENT","PARTIALLY_PAID","PAID","CANCELLED","ARCHIVED"}
@@ -205,3 +247,23 @@ def get_dashboard_stats(email,role):
         else:
             for k,v in _categorize_items(d['items']).items(): cats[k]+=v
     return {'monthly':[{'month':k,**v} for k,v in sorted(monthly.items())],'by_type':by_type,'by_creator':[{'email':k,**v} for k,v in sorted(by_creator.items(),key=lambda x:-x[1]['total'])],'by_category':cats,'total_documents':len(docs),'total_amount':sum(d['total'] or 0 for d in docs)}
+
+
+def get_receivables(email, role):
+    """Factures émises non annulées : montant, encaissé, reste, ancienneté (jours)."""
+    with get_conn() as conn:
+        cur=conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        base="""SELECT d.*, COALESCE(p.paid,0) AS paid, p.last_payment
+                FROM documents d
+                LEFT JOIN (SELECT document_id, SUM(amount) AS paid, MAX(payment_date) AS last_payment FROM payments GROUP BY document_id) p ON p.document_id=d.id
+                WHERE d.doc_type='facture' AND COALESCE(d.status,'DRAFT') NOT IN ('CANCELLED','ARCHIVED')"""
+        if role in {"SUPER_ADMIN","ADMIN","AUDITOR"}: cur.execute(base+" ORDER BY d.doc_date, d.id")
+        else: cur.execute(base+" AND d.created_by=%s ORDER BY d.doc_date, d.id",(email,))
+        rows=cur.fetchall()
+    today=datetime.now(timezone.utc).date(); out=[]
+    for r in rows:
+        d=_row_to_doc(r); paid=int(r["paid"] or 0); total=int(d["total"] or 0)
+        try: age=(today-datetime.fromisoformat(str(d["date"])[:10]).date()).days
+        except Exception: age=None
+        out.append({**d,"paid":paid,"balance":max(0,total-paid),"age_days":age,"last_payment":r["last_payment"]})
+    return out
